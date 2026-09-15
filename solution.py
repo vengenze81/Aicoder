@@ -1,36 +1,55 @@
 #!/usr/bin/env python3
 """
-Check common local ports (80, 443, 8080) on localhost using only the
-built‑in socket standard library.
+Gather basic system and network configuration details using only the standard library.
+Details collected:
+- Hostname
+- Primary IP address
+- OS platform information
+- Python version
 """
 
 import socket
-from typing import List
-
-HOST = "127.0.0.1"
-PORTS: List[int] = [80, 443, 8080]
-TIMEOUT = 1.0  # seconds
+import platform
+import sys
 
 
-def is_port_open(host: str, port: int, timeout: float = TIMEOUT) -> bool:
+def get_hostname() -> str:
+    """Return the system's hostname."""
+    return socket.gethostname()
+
+
+def get_primary_ip() -> str:
     """
-    Return True if a TCP connection to (host, port) can be established within
-    the given timeout; otherwise return False.
+    Determine the primary IP address used for outbound connections.
+    This method creates a temporary UDP socket to a well‑known external address
+    (Google DNS) without sending any data, then reads the socket's own address.
     """
     try:
-        with socket.create_connection((host, port), timeout):
-            return True
-    except (socket.timeout, ConnectionRefusedError, OSError):
-        return False
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            # The IP/port here does not need to be reachable; no packets are sent.
+            s.connect(("8.8.8.8", 80))
+            return s.getsockname()[0]
+    except OSError:
+        # Fallback to localhost if we cannot determine an external address
+        return "127.0.0.1"
 
+
+def get_os_info() -> str:
+    """Return a string describing the operating system."""
+    return f"{platform.system()} {platform.release()} ({platform.version()})"
+
+
+def get_python_version() -> str:
+    """Return the current Python interpreter version."""
+    return sys.version.splitlines()[0]  # e.g., '3.11.8 (main, Mar  5 2024, ...)'
 
 def main() -> None:
-    for port in PORTS:
-        if is_port_open(HOST, port):
-            status = "OPEN"
-        else:
-            status = "closed"
-        print(f"Port {port} on {HOST} is {status}")
+    print("System Configuration Details")
+    print("-" * 30)
+    print(f"Hostname          : {get_hostname()}")
+    print(f"Primary IP address: {get_primary_ip()}")
+    print(f"OS Platform       : {get_os_info()}")
+    print(f"Python version    : {get_python_version()}")
 
 
 if __name__ == "__main__":
