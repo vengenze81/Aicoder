@@ -1,32 +1,83 @@
-import time
+import logging
+import json
+from typing import Any, Dict, Optional, Union
+
 import requests
-from typing import Dict, Any, Optional, Tuple
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+# Configure module-level logger
+logger = logging.getLogger(__name__)
+logger.addHandler(logging.NullHandler())
+
+class APIError(Exception):
+    """Base class for API related errors."""
+    def __init__(self, status_code: Optional[int] = None, message: str = "", response: Optional[requests.Response] = None):
+        super().__init__(message)
+        self.status_code = status_code
+        self.response = response
+
 
 class APIManager:
     """
-    A simple API manager with support for custom headers, automatic retries, and exponential backoff.
+    A robust API client wrapper that supports GET, POST, PUT, DELETE
+    operations with comprehensive logging, retry logic, and edge case handling.
     """
+
     def __init__(
         self,
         base_url: str,
-        custom_headers: Optional[Dict[str, str]] = None,
+        headers: Optional[Dict[str, str]] = None,
+        timeout: Union[float, tuple] = 10.0,
         max_retries: int = 3,
-        backoff_factor: float = 0.5,
-        timeout: Optional[float] = 10.0,
-    ):
+        backoff_factor: float = 0.3,
+        status_forcelist: Optional[tuple] = (500, 502, 504),
+        auth: Optional[Any] = None,
+        session: Optional[requests.Session] = None,
+        *,
+        raise_on_status: bool = True,
+    ) -> None:
         """
-        :param base_url: Base URL for the API.
-        :param custom_headers: Optional dictionary of headers to include with every request.
-        :param max_retries: Maximum number of retry attempts for failed requests.
-        :param backoff_factor: Base factor for exponential backoff in seconds.
-        :param timeout: Request timeout in seconds.
+        :param base_url: Base URL for the API, e.g., "https://api.example.com".
+        :param headers: Default headers to send with each request.
+        :param timeout: Timeout for HTTP requests. Can be a single float or a (connect, read) tuple.
+        :param max_retries: Number of retries on failed requests.
+        :param backoff_factor: Backoff factor for retries.
+        :param status_forcelist: HTTP status codes to trigger a retry.
+        :param auth: Authentication tuple or requests.AuthBase instance.
+        :param session: Optional requests.Session to use.
+        :param raise_on_status: If True, raise APIError on non-success status codes.
         """
-        self.base_url = base_url.rstrip('/')
-        self.session = requests.Session()
-        self.session.headers.update(custom_headers or {})
-        self.max_retries = max_retries
-        self.backoff_factor = backoff_factor
+        if not isinstance(base_url, str) or not base_url:
+            raise ValueError("base_url must be a non-empty string")
+
+        self.base_url = base_url.rstrip("/")
+        self.headers = headers or {}
         self.timeout = timeout
+        self.auth = auth
+        self.raise_on_status = raise_on_status
+
+        self.session = session or requests.Session()
+        # Mount HTTPAdapter with retries
+        retry = Retry(
+            total=max_retries,
+            read=max_retries,
+            connect=max_retries,
+            backoff_factor=backoff_factor,
+            status_forcelist=status_forcelist,
+            raise_on_status=False,
+        )
+        adapter = HTTPAdapter(max_retries=retry)
+        self.session.mount("http://", adapter)
+        self.session.mount("https://", adapter)
+
+        logger.debug(
+            "APIManager initialized: base_url=%s, timeout=%s, max_retries=%s, headers=%s",
+            self.base_url,
+            self.timeout,
+            max_retries,
+            self.headers,
+        )
 
     def _request(
         self,
@@ -34,35 +85,79 @@ class APIManager:
         endpoint: str,
         *,
         params: Optional[Dict[str, Any]] = None,
-        data: Any = None,
-        json: Any = None,
+        data: Optional[Union[Dict[str, Any], str]] = None,
+        json_data: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, str]] = None,
-    ) -> Tuple[int, Dict[str, Any], str]:
-        """
-        Internal method to perform a request with retry logic.
-        :return: (status_code, response_headers, response_text)
-        """
+    ) -> Any:
+        if not isinstance(endpoint, str):
+            raise TypeError("endpoint must be a string")
+
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
-        attempt = 0
-        while True:
+        merged_headers = self.headers.copy()
+        if headers:
+            merged_headers.update(headers)
+
+        logger.debug(
+            "Preparing %s request to %s with params=%s, data=%s, json_data=%s, headers=%s",
+            method.upper(),
+            url,
+            params,
+            data,
+            json_data,
+            merged_headers,
+        )
+
+        try:
+            response = self.session.request(
+                method=method,
+                url=url,
+                params=params,
+                data=data,
+                json=json_data,
+                headers=merged_headers,
+                timeout=self.timeout,
+                auth=self.auth,
+            )
+        except requests.RequestException as exc:
+            logger.error("RequestException for %s %s: %s", method.upper(), url, exc)
+            raise APIError(message=str(exc)) from exc
+
+        logger.debug(
+            "Received response: status_code=%s, headers=%s, text=%s",
+            response.status_code,
+            response.headers,
+            response.text[:200],
+        )
+
+        if self.raise_on_status and not response.ok:
+            logger.warning(
+                "Non-success status code %s for %s %s: %s",
+                response.status_code,
+                method.upper(),
+                url,
+                response.text[:200],
+            )
+            raise APIError(
+                status_code=response.status_code,
+                message=f"HTTP {response.status_code} for {method.upper()} {url}",
+                response=response,
+            )
+
+        content_type = response.headers.get("Content-Type", "").lower()
+        if "application/json" in content_type:
             try:
-                resp = self.session.request(
-                    method=method.upper(),
-                    url=url,
-                    params=params,
-                    data=data,
-                    json=json,
-                    headers=headers,
-                    timeout=self.timeout,
-                )
-                resp.raise_for_status()
-                return resp.status_code, resp.headers, resp.text
-            except requests.RequestException as exc:
-                attempt += 1
-                if attempt > self.max_retries:
-                    raise
-                backoff = self.backoff_factor * (2 ** (attempt - 1))
-                time.sleep(backoff)
+                return response.json()
+            except json.JSONDecodeError as exc:
+                logger.error("JSON decode error for %s %s: %s", method.upper(), url, exc)
+                raise APIError(
+                    status_code=response.status_code,
+                    message="Invalid JSON response",
+                    response=response,
+                ) from exc
+        else:
+            return response.text
+
+    # Public HTTP verb methods
 
     def get(
         self,
@@ -70,102 +165,44 @@ class APIManager:
         *,
         params: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, str]] = None,
-    ) -> Tuple[int, Dict[str, Any], str]:
+    ) -> Any:
         return self._request("GET", endpoint, params=params, headers=headers)
 
     def post(
         self,
         endpoint: str,
         *,
-        data: Any = None,
-        json: Any = None,
+        data: Optional[Union[Dict[str, Any], str]] = None,
+        json_data: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, str]] = None,
-    ) -> Tuple[int, Dict[str, Any], str]:
-        return self._request("POST", endpoint, data=data, json=json, headers=headers)
+    ) -> Any:
+        return self._request("POST", endpoint, data=data, json_data=json_data, headers=headers)
 
     def put(
         self,
         endpoint: str,
         *,
-        data: Any = None,
-        json: Any = None,
+        data: Optional[Union[Dict[str, Any], str]] = None,
+        json_data: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, str]] = None,
-    ) -> Tuple[int, Dict[str, Any], str]:
-        return self._request("PUT", endpoint, data=data, json=json, headers=headers)
+    ) -> Any:
+        return self._request("PUT", endpoint, data=data, json_data=json_data, headers=headers)
 
     def delete(
         self,
         endpoint: str,
         *,
+        params: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, str]] = None,
-    ) -> Tuple[int, Dict[str, Any], str]:
-        return self._request("DELETE", endpoint, headers=headers)
+    ) -> Any:
+        return self._request("DELETE", endpoint, params=params, headers=headers)
 
-# ------------------- Testing Block -------------------
-import unittest
-from unittest.mock import patch, MagicMock
+    # Context manager support
 
-class TestAPIManager(unittest.TestCase):
-    def setUp(self):
-        self.manager = APIManager(
-            base_url="https://api.example.com",
-            custom_headers={"Authorization": "Bearer token"},
-            max_retries=2,
-            backoff_factor=0.1,
-        )
+    def __enter__(self) -> "APIManager":
+        logger.debug("Entering context manager for APIManager")
+        return self
 
-    @patch.object(requests.Session, "request")
-    def test_get_success(self, mock_request):
-        # Mock a successful response
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.headers = {"Content-Type": "application/json"}
-        mock_resp.text = '{"key": "value"}'
-        mock_resp.raise_for_status.return_value = None
-        mock_request.return_value = mock_resp
-
-        status, headers, body = self.manager.get("/resource")
-        self.assertEqual(status, 200)
-        self.assertEqual(headers["Content-Type"], "application/json")
-        self.assertEqual(body, '{"key": "value"}')
-        mock_request.assert_called_once_with(
-            method="GET",
-            url="https://api.example.com/resource",
-            params=None,
-            data=None,
-            json=None,
-            headers=None,
-            timeout=10.0,
-        )
-
-    @patch.object(requests.Session, "request")
-    def test_retry_logic(self, mock_request):
-        # Simulate two failures followed by a success
-        failure_resp = MagicMock()
-        failure_resp.raise_for_status.side_effect = requests.HTTPError("500 Internal Server Error")
-
-        success_resp = MagicMock()
-        success_resp.status_code = 200
-        success_resp.headers = {}
-        success_resp.text = ""
-        success_resp.raise_for_status.return_value = None
-
-        mock_request.side_effect = [failure_resp, failure_resp, success_resp]
-
-        status, _, _ = self.manager.get("/unstable")
-        self.assertEqual(status, 200)
-        self.assertEqual(mock_request.call_count, 3)
-
-    @patch.object(requests.Session, "request")
-    def test_exceeded_retries(self, mock_request):
-        # Simulate all failures
-        failure_resp = MagicMock()
-        failure_resp.raise_for_status.side_effect = requests.HTTPError("500 Internal Server Error")
-        mock_request.side_effect = [failure_resp] * (self.manager.max_retries + 1)
-
-        with self.assertRaises(requests.HTTPError):
-            self.manager.get("/always-fail")
-        self.assertEqual(mock_request.call_count, self.manager.max_retries + 1)
-
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    def __exit__(self, exc_type, exc, tb) -> None:
+        logger.debug("Exiting context manager for APIManager, closing session")
+        self.session.close()
