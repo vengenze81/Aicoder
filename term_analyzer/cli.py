@@ -11,7 +11,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("term_analyzer.cli")
 
-async def perform_scan_async(target: str, ports_str: str, fuzz: bool = False, audit: bool = False, spray_pass: str = None, output: str = None, ext: str = None, recursive: bool = False, wordlist: str = None) -> None:
+async def run_scan_on_target(target: str, ports_str: str, fuzz: bool = False, audit: bool = False, spray_pass: str = None, output: str = None, ext: str = None, recursive: bool = False, wordlist: str = None) -> None:
     try:
         ports = [int(p.strip()) for p in ports_str.split(",")]
     except ValueError:
@@ -21,12 +21,11 @@ async def perform_scan_async(target: str, ports_str: str, fuzz: bool = False, au
     db = DatabaseManager()
     prev_scan = db.get_previous_scan(target)
 
-    logger.info(f"Starting concurrent async reconnaissance scan on {target} across ports: {ports}")
+    logger.info(f"Starting reconnaissance scan on target: {target}")
     tester = PortTester(target)
     open_ports = await tester.scan_ports(ports)
 
-    # Print Reconnaissance Table
-    print(f" Reconnaissance Results & CVE Audit for {target}")
+    print(f"\n Reconnaissance Results & CVE Audit for {target}")
     print("┏━━━━━━━━━━━━━━━━┳━━━━━━┳━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━┓")
     print("┃ Host           ┃ Port ┃ Status ┃ Auth / Access Audit ┃")
     print("┡━━━━━━━━━━━━━━━━╇━━━━━━╇━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━┩")
@@ -58,7 +57,6 @@ async def perform_scan_async(target: str, ports_str: str, fuzz: bool = False, au
         if not web_ports:
             web_ports = [p["port"] for p in open_ports]
 
-        # Determine paths from wordlist or defaults
         paths = ["admin", "login", "api", "dashboard", "config", "status", "test", "v1", "backup", "index"]
         if wordlist:
             try:
@@ -135,21 +133,12 @@ async def perform_scan_async(target: str, ports_str: str, fuzz: bool = False, au
             print("│ ✨ No changes detected since last scan. Attack surface is stable.     │")
         print("╰─────────────────────────────────────────────────────────────────────╯")
 
-    # Save current scan to history database
     db.save_scan(target, scan_results_data, fuzz_results)
-    logger.info("[*] Scan results successfully archived to historical database (analyzer_history.db).")
-
-    print("╭─────────────────── Scan Results ───────────────────╮")
-    if audit and any(d["audit"].startswith("VULNERABLE") for d in scan_results_data):
-        print("│ ⚠️ Vulnerabilities or insecure access detected!   │")
-    elif fuzz_results or spray_results:
-        print("│ ⚠️ Active endpoints or credentials discovered.      │")
-    else:
-        print("│ ✅ No security issues or CVE matches detected.     │")
-    print("╰────────────────────────────────────────────────────╯")
+    logger.info(f"[*] Scan results for {target} archived to historical database (analyzer_history.db).")
 
     # Generate HTML Report if requested
     if output:
+        report_filename = output if len(target) == len(output.replace(".html", "")) else f"{output.replace('.html', '')}_{target.replace('.', '_')}.html"
         html_content = f"""<!DOCTYPE html>
 <html>
 <head>
@@ -190,13 +179,46 @@ async def perform_scan_async(target: str, ports_str: str, fuzz: bool = False, au
 
         html_content += "</body></html>"
 
-        with open(output, "w") as f:
+        with open(report_filename, "w") as f:
             f.write(html_content)
-        print(f"[+] HTML report successfully saved to {output}")
+        print(f"[+] HTML report successfully saved to {report_filename}")
+
+async def main_async(args):
+    targets = []
+    if args.scan:
+        targets.append(args.scan)
+    elif args.cidr:
+        logger.info(f"[*] Sweeping CIDR block {args.cidr} for live hosts...")
+        dummy_tester = PortTester("127.0.0.1")
+        live_hosts = await dummy_tester.discover_live_hosts(args.cidr)
+        if not live_hosts:
+            logger.warning(f"[-] No live hosts discovered on CIDR range {args.cidr}.")
+            return
+        logger.info(f"[+] Discovered {len(live_hosts)} live host(s): {live_hosts}")
+        targets = live_hosts
+    else:
+        print("Error: Either --scan <ip> or --cidr <subnet> must be specified.")
+        sys.exit(1)
+
+    for target in targets:
+        await run_scan_on_target(
+            target=target,
+            ports_str=args.ports,
+            fuzz=args.fuzz,
+            audit=args.audit,
+            spray_pass=args.spray,
+            output=args.output,
+            ext=args.ext,
+            recursive=args.recursive,
+            wordlist=args.wordlist
+        )
 
 def main():
     parser = argparse.ArgumentParser(description="Term-Analyzer TUI/CLI Security Toolkit")
-    parser.add_argument("--scan", help="Target IP or hostname to scan")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--scan", help="Target IP or hostname to scan")
+    group.add_argument("--cidr", help="Target CIDR subnet to sweep (e.g. 192.168.68.0/24)")
+    
     parser.add_argument("--ports", default="21,22,80,443,3306,8080", help="Comma-separated list of ports")
     parser.add_argument("--fuzz", action="store_true", help="Automatically fuzz discovered web endpoints")
     parser.add_argument("--wordlist", help="Path to custom external text wordlist file for fuzzing")
@@ -208,22 +230,7 @@ def main():
     parser.add_argument("log_file", nargs="?", help="Optional log file path")
 
     args = parser.parse_args()
-
-    if not args.scan:
-        parser.print_help()
-        sys.exit(1)
-
-    asyncio.run(perform_scan_async(
-        target=args.scan,
-        ports_str=args.ports,
-        fuzz=args.fuzz,
-        audit=args.audit,
-        spray_pass=args.spray,
-        output=args.output,
-        ext=args.ext,
-        recursive=args.recursive,
-        wordlist=args.wordlist
-    ))
+    asyncio.run(main_async(args))
 
 if __name__ == "__main__":
     main()
