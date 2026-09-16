@@ -12,6 +12,7 @@ from term_analyzer.jwt_utils import decode_jwt, brute_force_jwt, download_wordli
 from term_analyzer.vhost import run_vhost_scan
 from term_analyzer.dir_scanner import run_dir_scan
 from term_analyzer.openapi_scanner import run_openapi_scan
+from term_analyzer.crawler import crawl_target
 
 console = Console()
 
@@ -224,6 +225,38 @@ async def run_openapi_async(args):
     if args.html_report:
         generate_html_report(report_data, args.html_report)
 
+async def run_crawl_async(args):
+    if not args.target:
+        console.print("[bold red][!] Please specify a target URL using --target[/bold red]")
+        return
+        
+    endpoints, forms = await crawl_target(
+        target_url=args.target,
+        max_depth=args.max_depth,
+        concurrency=args.concurrency
+    )
+    
+    formatted_results = []
+    for ep in endpoints:
+        formatted_results.append({
+            "payloads": [ep["url"]],
+            "status_code": ep["status"],
+            "response_length": 0,
+            "response_snippet": f"Depth: {ep['depth']}",
+            "extracted_secrets": ep["secrets"]
+        })
+        
+    report_data = {
+        "mode": "crawl-scan",
+        "target": args.target,
+        "results": formatted_results
+    }
+    
+    if args.json_report:
+        json_report(report_data, args.json_report)
+    if args.html_report:
+        generate_html_report(report_data, args.html_report)
+
 def handle_jwt_commands(args):
     if args.jwt_inspect:
         header, payload, err = decode_jwt(args.jwt_inspect)
@@ -252,6 +285,8 @@ def main():
     parser.add_argument("--vhost", action="store_true", help="Enable Virtual Host / Host header fuzzing mode")
     parser.add_argument("--dir-scan", action="store_true", help="Enable directory and file brute-forcing mode")
     parser.add_argument("--openapi", action="store_true", help="Enable OpenAPI / Swagger schema-driven scan mode")
+    parser.add_argument("--crawl", action="store_true", help="Enable recursive web crawler and form extractor mode")
+    parser.add_argument("--max-depth", type=int, default=2, help="Maximum crawl depth")
     parser.add_argument("--spec", type=str, default=None, help="Path to OpenAPI/Swagger JSON or YAML spec file")
     parser.add_argument("--domain", type=str, default=None, help="Base domain for VHost fuzzing (e.g., example.com)")
     parser.add_argument("--intruder-mode", choices=["sniper", "pitchfork", "cluster"], default="sniper", help="Intruder attack mode")
@@ -282,6 +317,8 @@ def main():
     
     if args.download_wordlist:
         download_wordlist(args.download_wordlist)
+    elif args.crawl:
+        asyncio.run(run_crawl_async(args))
     elif args.openapi:
         asyncio.run(run_openapi_async(args))
     elif args.dir_scan:
