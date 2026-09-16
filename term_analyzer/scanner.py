@@ -1,4 +1,17 @@
 import socket
+import ipaddress
+
+def expand_targets(target_input):
+    """
+    Expands a single IP, hostname, or CIDR network block into a list of target IPs.
+    """
+    try:
+        network = ipaddress.ip_network(target_input, strict=False)
+        # If it is a single IP, network.num_addresses will be 1
+        return [str(ip) for ip in network.hosts()] or [str(network.network_address)]
+    except ValueError:
+        # Not a valid CIDR, treat as a hostname or single IP string
+        return [target_input]
 
 def scan_target_ports(target_host, port_list, timeout=1.0):
     """
@@ -6,8 +19,6 @@ def scan_target_ports(target_host, port_list, timeout=1.0):
     Returns a list of discovered open ports.
     """
     open_ports = []
-    print(f"[*] Scanning {target_host} across {len(port_list)} ports...")
-    
     for port in port_list:
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

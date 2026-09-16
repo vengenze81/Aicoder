@@ -3,6 +3,7 @@ from requests.auth import HTTPBasicAuth
 from term_analyzer.defaults import get_defaults_for_port
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
+import os
 
 try:
     import paramiko
@@ -23,6 +24,17 @@ except ImportError:
     PSYCOPG2_AVAILABLE = False
 
 print_lock = threading.Lock()
+
+def load_wordlist(file_path):
+    """Reads a text file and returns a list of cleaned, non-empty lines."""
+    if not file_path or not os.path.exists(file_path):
+        return []
+    try:
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            return [line.strip() for line in f if line.strip() and not line.startswith("#")]
+    except Exception as e:
+        print(f"[-] Error reading wordlist {file_path}: {e}")
+        return []
 
 def test_http_auth(host, port, username, password):
     scheme = "https" if port == 443 else "http"
@@ -93,21 +105,34 @@ def perform_auth_check(target_host, port, username, password):
     else:
         return False, "Service protocol handler not implemented yet"
 
-def run_credential_spray(target_host, open_ports, user_arg, password_arg, max_threads=5):
+def run_credential_spray(target_host, open_ports, user_arg=None, password_arg=None, user_file=None, password_file=None, max_threads=5):
     """
-    Executes live multithreaded credential spraying and returns a list of result dictionaries.
+    Executes live multithreaded credential spraying using defaults, CLI args, or wordlist files.
     """
     results = []
     tasks = []
 
     for port in open_ports:
-        if password_arg or user_arg:
-            usernames = [u.strip() for u in user_arg.split(",")] if user_arg else ["admin"]
-            passwords = [password_arg] if password_arg else [pwd for _, pwd in get_defaults_for_port(port)]
-            pairs = [(u, p) for u in usernames for p in passwords]
+        # Resolve usernames
+        file_users = load_wordlist(user_file)
+        if file_users:
+            usernames = file_users
+        elif user_arg:
+            usernames = [u.strip() for u in user_arg.split(",")]
         else:
-            pairs = get_defaults_for_port(port)
-            print(f"[*] Loaded {len(pairs)} default credential pairs for port {port}")
+            usernames = [u for u, _ in get_defaults_for_port(port)]
+
+        # Resolve passwords
+        file_passwords = load_wordlist(password_file)
+        if file_passwords:
+            passwords = file_passwords
+        elif password_arg:
+            passwords = [password_arg]
+        else:
+            passwords = [p for _, p in get_defaults_for_port(port)]
+
+        pairs = [(u, p) for u in usernames for p in passwords]
+        print(f"[*] Loaded {len(pairs)} credential combination(s) for port {port}")
 
         for username, password in pairs:
             tasks.append((port, username, password))
