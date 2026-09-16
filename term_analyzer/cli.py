@@ -10,6 +10,7 @@ from term_analyzer.reporter import json_report, pretty_report, generate_html_rep
 from term_analyzer.templates import run_template_scan
 from term_analyzer.jwt_utils import decode_jwt, brute_force_jwt, download_wordlist
 from term_analyzer.vhost import run_vhost_scan
+from term_analyzer.dir_scanner import run_dir_scan
 
 console = Console()
 
@@ -145,6 +146,34 @@ async def run_vhost_async(args):
     if args.html_report:
         generate_html_report(report_data, args.html_report)
 
+async def run_dir_scan_async(args):
+    if not args.target:
+        console.print("[bold red][!] Please specify a target URL using --target[/bold red]")
+        return
+        
+    exclude_statuses = {int(s.strip()) for s in args.exclude_status.split(",")} if args.exclude_status else {404}
+    exclude_lengths = {int(l.strip()) for l in args.exclude_length.split(",")} if args.exclude_length else set()
+    
+    results = await run_dir_scan(
+        target_url=args.target,
+        wordlist_path=args.wordlist,
+        concurrency=args.concurrency,
+        proxy=args.proxy,
+        exclude_statuses=exclude_statuses,
+        exclude_lengths=exclude_lengths
+    )
+    
+    report_data = {
+        "mode": "dir-scan",
+        "target": args.target,
+        "results": results
+    }
+    
+    if args.json_report:
+        json_report(report_data, args.json_report)
+    if args.html_report:
+        generate_html_report(report_data, args.html_report)
+
 def handle_jwt_commands(args):
     if args.jwt_inspect:
         header, payload, err = decode_jwt(args.jwt_inspect)
@@ -171,6 +200,7 @@ def main():
     parser.add_argument("--target", type=str, default=None, help="Target URL or IP")
     parser.add_argument("--intruder", action="store_true", help="Enable Burp-style intruder mode")
     parser.add_argument("--vhost", action="store_true", help="Enable Virtual Host / Host header fuzzing mode")
+    parser.add_argument("--dir-scan", action="store_true", help="Enable directory and file brute-forcing mode")
     parser.add_argument("--domain", type=str, default=None, help="Base domain for VHost fuzzing (e.g., example.com)")
     parser.add_argument("--intruder-mode", choices=["sniper", "pitchfork", "cluster"], default="sniper", help="Intruder attack mode")
     parser.add_argument("--payloads", type=str, default="payloads.txt", help="Path to payload file(s), comma-separated")
@@ -183,7 +213,7 @@ def main():
     parser.add_argument("--wordlist", type=str, default="subdomains.txt", help="Path to wordlist file")
     parser.add_argument("--proxy", type=str, default=None, help="Upstream proxy URL (e.g., http://127.0.0.1:8080 or socks5://127.0.0.1:9050)")
     parser.add_argument("--method", type=str, default="GET", help="HTTP method")
-    parser.add_argument("--concurrency", type=int, default=10, help="Max concurrent requests")
+    parser.add_argument("--concurrency", type=int, default=20, help="Max concurrent requests")
     parser.add_argument("--delay", type=float, default=0.0, help="Delay between requests")
     parser.add_argument("--rotate-ua", action="store_true", help="Rotate User-Agents")
     parser.add_argument("--smart-pause", action="store_true", help="Pause on 429 rate-limits")
@@ -198,6 +228,8 @@ def main():
     
     if args.download_wordlist:
         download_wordlist(args.download_wordlist)
+    elif args.dir_scan:
+        asyncio.run(run_dir_scan_async(args))
     elif args.vhost:
         asyncio.run(run_vhost_async(args))
     elif args.intruder:
