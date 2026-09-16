@@ -3,6 +3,7 @@ import asyncio
 import itertools
 import os
 import aiohttp
+from aiohttp_socks import ProxyConnector
 from rich.console import Console
 from term_analyzer.spraying import load_payload_files, fuzz_advanced
 from term_analyzer.reporter import json_report, pretty_report, generate_html_report
@@ -24,7 +25,6 @@ async def run_intruder_async(args):
         
     console.print(f"[bold cyan][*] Loaded {len(combinations)} payload combinations for mode: {mode.upper()}[/bold cyan]")
     
-    # Parse exclusion filters
     exclude_statuses = {int(s.strip()) for s in args.exclude_status.split(",")} if args.exclude_status else set()
     exclude_lengths = {int(l.strip()) for l in args.exclude_length.split(",")} if args.exclude_length else set()
     
@@ -33,7 +33,9 @@ async def run_intruder_async(args):
     results = []
     filtered_count = 0
     
-    async with aiohttp.ClientSession() as session:
+    connector = ProxyConnector.from_url(args.proxy) if args.proxy else None
+    
+    async with aiohttp.ClientSession(connector=connector) as session:
         tasks = [
             fuzz_advanced(
                 session=session,
@@ -85,7 +87,7 @@ async def run_intruder_async(args):
     pretty_report(report_data)
 
 async def run_template_async(args):
-    results = await run_template_scan(args.target, args.template, args.concurrency)
+    results = await run_template_scan(args.target, args.template, args.concurrency, proxy=args.proxy)
     
     formatted_results = []
     for r in results:
@@ -146,6 +148,7 @@ def main():
     parser.add_argument("--jwt-brute", type=str, default=None, help="Brute-force HS256 JWT secret using a wordlist")
     parser.add_argument("--download-wordlist", choices=["jwt", "directories", "parameters"], default=None, help="Download standard wordlists: jwt, directories, parameters")
     parser.add_argument("--wordlist", type=str, default=None, help="Path to wordlist file for JWT brute-force")
+    parser.add_argument("--proxy", type=str, default=None, help="Upstream proxy URL (e.g., http://127.0.0.1:8080 or socks5://127.0.0.1:9050)")
     parser.add_argument("--method", type=str, default="GET", help="HTTP method")
     parser.add_argument("--concurrency", type=int, default=10, help="Max concurrent requests")
     parser.add_argument("--delay", type=float, default=0.0, help="Delay between requests")

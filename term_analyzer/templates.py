@@ -1,111 +1,115 @@
 import os
-import glob
 import yaml
 import asyncio
 import aiohttp
+from aiohttp_socks import ProxyConnector
 from rich.console import Console
 
 console = Console()
 
-def load_templates(template_path):
-    """Loads a single YAML template file or all YAML files in a directory."""
+def load_template(template_path):
+    """Loads a single YAML template or all templates in a directory."""
     templates = []
-    if os.path.isfile(template_path):
-        paths = [template_path]
-    elif os.path.isdir(template_path):
-        paths = glob.glob(os.path.join(template_path, "*.yaml")) + glob.glob(os.path.join(template_path, "*.yml"))
-    else:
-        return []
+    if os.path.isdir(template_path):
+        for root, _, files in os.walk(template_path):
+            for file in files:
+                if file.endswith((".yaml", ".yml")):
+                    full_path = os.path.join(root, file)
+                    templates.append(load_single_yaml(full_path))
+    elif os.path.isfile(template_path):
+        templates.append(load_single_yaml(template_path))
+    return [t for t in templates if t]
 
-    for p in paths:
-        try:
-            with open(p, "r", encoding="utf-8") as f:
-                data = yaml.safe_load(f)
-                if data:
-                    templates.append(data)
-        except Exception as e:
-            console.print(f"[bold red][!] Error loading template {p}: {e}[/bold red]")
-    return templates
-
-async def execute_template_request(session, target_base, request_def):
-    """Executes a single HTTP request defined in a template."""
-    method = request_def.get("method", "GET").upper()
-    path = request_def.get("path", "/")
-    
-    # Ensure clean URL joining
-    target_url = target_base.rstrip("/") + "/" + path.lstrip("/")
-    
-    headers = request_def.get("headers", {})
-    body = request_def.get("body", None)
-    
-    request_kwargs = {"headers": headers, "ssl": False}
-    if body:
-        request_kwargs["data"] = body
-
+def load_single_yaml(path):
     try:
-        async with session.request(method, target_url, **request_kwargs) as response:
-            text = await response.text()
-            return response.status, text, target_url
+        with open(path, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f)
     except Exception as e:
-        return 0, str(e), target_url
+        console.print(f"[bold red][!] Error loading template {path}: {e}[/bold red]")
+        return None
 
-def evaluate_matchers(status, text, matchers_def, condition="and"):
-    """Evaluates status and word matchers against response data."""
-    if not matchers_def:
-        return True # Default to matched if no matchers specified
+def match_rules(status, text, match_config):
+    """Evaluates status codes, match strings, regex patterns, and negative rules."""
+    import re
+    
+    # 1. Status check
+    statuses = match_config.get("status", [])
+    if status not in statuses:
+        return False
         
-    results = []
-    for matcher in matchers_def:
-        m_type = matcher.get("type")
-        if m_type == "status":
-            allowed_statuses = matcher.get("status", [])
-            results.append(status in allowed_statuses)
-        elif m_type == "word":
-            words = matcher.get("words", [])
-            # Check if words are present in text
-            word_matched = any(w in text for w in words)
-            results.append(word_matched)
+    # 2. String matching (all must match)
+    match_strings = match_config.get("match", [])
+    for s in match_strings:
+        if s not in text:
+            return False
             
-    if condition == "or":
-        return any(results)
-    return all(results) # default 'and'
+    # 3. Regex matching
+    match_regexes = match_config.get("regex", [])
+    for rx in match_regexes:
+        if not re.search(rx, text):
+            return False
+            
+    # 4. Negative matching (none of these should be present if negative: true)
+    negative_rules = match_config.get("negative", [])
+    for neg in negative_rules:
+        if neg in text:
+            return False
+            
+    return True
 
-async def run_template_scan(target_base, template_path, concurrency=10):
-    """Scans a target using loaded YAML templates."""
-    templates = load_templates(template_path)
+async def execute_template_request(session, target_base, template):
+    """Executes requests defined in a template against a target URL."""
+    results = []
+    path = template.get("path", "/")
+    method = template.get("method", "GET").upper()
+    match_config = template.get("matchers", {})
+    name = template.get("name", "Unknown Check")
+    severity = template.get("severity", "info")
+    
+    url = target_base.rstrip("/") + "/" + path.lstrip("/")
+    
+    try:
+        async with session.request(method, url, timeout=10) as response:
+            status = response.status
+            text = await response.text()
+            matched = match_rules(status, text, match_config)
+            
+            results.append({
+                "name": name,
+                "severity": severity,
+                "url": url,
+                "status_code": status,
+                "response_snippet": text,
+                "matched": matched
+            })
+    except Exception as e:
+        results.append({
+            "name": name,
+            "severity": severity,
+            "url": url,
+            "status_code": 0,
+            "response_snippet": str(e),
+            "matched": False
+        })
+        
+    return results
+
+async def run_template_scan(target_base, template_path, concurrency=10, proxy=None):
+    """Asynchronously runs loaded vulnerability templates against a target with optional proxy."""
+    templates = load_template(template_path)
     if not templates:
-        console.print(f"[bold yellow][!] No valid templates found at: {template_path}[/bold yellow]")
+        console.print(f"[bold red][!] No valid templates found at {template_path}[/bold red]")
         return []
 
-    console.print(f"[bold cyan][*] Loaded {len(templates)} template(s). Starting scan against {target_base}...[/bold cyan]")
+    connector = ProxyConnector.from_url(proxy) if proxy else None
     
     semaphore = asyncio.Semaphore(concurrency)
-    scan_results = []
-
-    async with aiohttp.ClientSession() as session:
-        for tpl in templates:
-            tpl_id = tpl.get("id", "unknown-template")
-            info = tpl.get("info", {})
-            name = info.get("name", tpl_id)
-            severity = info.get("severity", "info")
-            
-            requests = tpl.get("requests", [])
-            for req in requests:
-                async with semaphore:
-                    status, text, url = await execute_template_request(session, target_base, req)
-                    matchers = req.get("matchers", [])
-                    condition = req.get("matchers-condition", "and")
-                    
-                    matched = evaluate_matchers(status, text, matchers, condition)
-                    
-                    scan_results.append({
-                        "template_id": tpl_id,
-                        "name": name,
-                        "severity": severity,
-                        "url": url,
-                        "status_code": status,
-                        "matched": matched,
-                        "response_snippet": text[:150]
-                    })
-                    
-    return scan_results
+    async with aiohttp.ClientSession(connector=connector) as session:
+        tasks = []
+        for t in templates:
+            async with semaphore:
+                tasks.append(execute_template_request(session, target_base, t))
+        
+        nested_results = await asyncio.gather(*tasks)
+        flattened = [item for sublist in nested_results for item in sublist]
+        return flattened
