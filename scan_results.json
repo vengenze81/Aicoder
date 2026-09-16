@@ -1,0 +1,10 @@
+[
+    {
+        "target": "127.0.0.1",
+        "port": 8081,
+        "username": "admin",
+        "password": "secret",
+        "success": true,
+        "message": "Successful login (HTTP 200)"
+    }
+]

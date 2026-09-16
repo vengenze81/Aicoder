@@ -1,0 +1,42 @@
+[
+    {
+        "target": "192.168.68.102",
+        "port": 8080,
+        "username": "admin",
+        "password": "admin",
+        "success": false,
+        "message": "Connection Error: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))"
+    },
+    {
+        "target": "192.168.68.102",
+        "port": 8080,
+        "username": "admin",
+        "password": "password",
+        "success": false,
+        "message": "Connection Error: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))"
+    },
+    {
+        "target": "192.168.68.102",
+        "port": 8080,
+        "username": "root",
+        "password": "root",
+        "success": false,
+        "message": "Connection Error: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))"
+    },
+    {
+        "target": "192.168.68.102",
+        "port": 8080,
+        "username": "admin",
+        "password": "",
+        "success": false,
+        "message": "Connection Error: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))"
+    },
+    {
+        "target": "192.168.68.102",
+        "port": 8080,
+        "username": "tomcat",
+        "password": "tomcat",
+        "success": false,
+        "message": "Connection Error: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))"
+    }
+]

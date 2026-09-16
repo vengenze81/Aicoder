@@ -1,0 +1,202 @@
+[
+    {
+        "target": "192.168.68.102",
+        "port": 8080,
+        "username": "admin",
+        "password": "password",
+        "success": false,
+        "message": "Connection Dropped / Reset (HTTP)"
+    },
+    {
+        "target": "192.168.68.102",
+        "port": 8080,
+        "username": "admin",
+        "password": "admin",
+        "success": false,
+        "message": "Connection Dropped / Reset (HTTP)"
+    },
+    {
+        "target": "192.168.68.102",
+        "port": 8080,
+        "username": "admin",
+        "password": "root",
+        "success": false,
+        "message": "Connection Dropped / Reset (HTTP)"
+    },
+    {
+        "target": "192.168.68.102",
+        "port": 8080,
+        "username": "admin",
+        "password": "admin",
+        "success": false,
+        "message": "Connection Dropped / Reset (HTTP)"
+    },
+    {
+        "target": "192.168.68.102",
+        "port": 8080,
+        "username": "admin",
+        "password": "",
+        "success": false,
+        "message": "Connection Dropped / Reset (HTTP)"
+    },
+    {
+        "target": "192.168.68.102",
+        "port": 8080,
+        "username": "admin",
+        "password": "tomcat",
+        "success": false,
+        "message": "Connection Dropped / Reset (HTTP)"
+    },
+    {
+        "target": "192.168.68.102",
+        "port": 8080,
+        "username": "admin",
+        "password": "password",
+        "success": false,
+        "message": "Connection Dropped / Reset (HTTP)"
+    },
+    {
+        "target": "192.168.68.102",
+        "port": 8080,
+        "username": "admin",
+        "password": "root",
+        "success": false,
+        "message": "Connection Dropped / Reset (HTTP)"
+    },
+    {
+        "target": "192.168.68.102",
+        "port": 8080,
+        "username": "admin",
+        "password": "",
+        "success": false,
+        "message": "Connection Dropped / Reset (HTTP)"
+    },
+    {
+        "target": "192.168.68.102",
+        "port": 8080,
+        "username": "admin",
+        "password": "tomcat",
+        "success": false,
+        "message": "Connection Dropped / Reset (HTTP)"
+    },
+    {
+        "target": "192.168.68.102",
+        "port": 8080,
+        "username": "root",
+        "password": "password",
+        "success": false,
+        "message": "Connection Dropped / Reset (HTTP)"
+    },
+    {
+        "target": "192.168.68.102",
+        "port": 8080,
+        "username": "root",
+        "password": "admin",
+        "success": false,
+        "message": "Connection Dropped / Reset (HTTP)"
+    },
+    {
+        "target": "192.168.68.102",
+        "port": 8080,
+        "username": "root",
+        "password": "root",
+        "success": false,
+        "message": "Connection Dropped / Reset (HTTP)"
+    },
+    {
+        "target": "192.168.68.102",
+        "port": 8080,
+        "username": "root",
+        "password": "tomcat",
+        "success": false,
+        "message": "Connection Dropped / Reset (HTTP)"
+    },
+    {
+        "target": "192.168.68.102",
+        "port": 8080,
+        "username": "root",
+        "password": "",
+        "success": false,
+        "message": "Connection Dropped / Reset (HTTP)"
+    },
+    {
+        "target": "192.168.68.102",
+        "port": 8080,
+        "username": "tomcat",
+        "password": "password",
+        "success": false,
+        "message": "Connection Dropped / Reset (HTTP)"
+    },
+    {
+        "target": "192.168.68.102",
+        "port": 8080,
+        "username": "tomcat",
+        "password": "admin",
+        "success": false,
+        "message": "Connection Dropped / Reset (HTTP)"
+    },
+    {
+        "target": "192.168.68.102",
+        "port": 8080,
+        "username": "tomcat",
+        "password": "root",
+        "success": false,
+        "message": "Connection Dropped / Reset (HTTP)"
+    },
+    {
+        "target": "192.168.68.102",
+        "port": 8080,
+        "username": "tomcat",
+        "password": "",
+        "success": false,
+        "message": "Connection Dropped / Reset (HTTP)"
+    },
+    {
+        "target": "192.168.68.102",
+        "port": 8080,
+        "username": "tomcat",
+        "password": "tomcat",
+        "success": false,
+        "message": "Connection Dropped / Reset (HTTP)"
+    },
+    {
+        "target": "192.168.68.102",
+        "port": 8080,
+        "username": "admin",
+        "password": "admin",
+        "success": false,
+        "message": "Connection Dropped / Reset (HTTP)"
+    },
+    {
+        "target": "192.168.68.102",
+        "port": 8080,
+        "username": "admin",
+        "password": "root",
+        "success": false,
+        "message": "Connection Dropped / Reset (HTTP)"
+    },
+    {
+        "target": "192.168.68.102",
+        "port": 8080,
+        "username": "admin",
+        "password": "tomcat",
+        "success": false,
+        "message": "Connection Dropped / Reset (HTTP)"
+    },
+    {
+        "target": "192.168.68.102",
+        "port": 8080,
+        "username": "admin",
+        "password": "",
+        "success": false,
+        "message": "Connection Dropped / Reset (HTTP)"
+    },
+    {
+        "target": "192.168.68.102",
+        "port": 8080,
+        "username": "admin",
+        "password": "password",
+        "success": false,
+        "message": "Connection Dropped / Reset (HTTP)"
+    }
+]

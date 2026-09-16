@@ -1,8 +1,4 @@
 admin
 root
+tomcat
 user
-guest
-test
-administrator
-manager
-api

@@ -66,7 +66,7 @@ def test_ftp_auth(host, port, username, password):
         return False, f"FTP Error: {e}"
 
 def test_http_auth(host, port, username, password, custom_headers=None):
-    """Tests HTTP/HTTPS authentication with browser headers and protocol fallback."""
+    """Tests HTTP authentication with automated common path discovery and schema fallback."""
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
@@ -74,35 +74,36 @@ def test_http_auth(host, port, username, password, custom_headers=None):
     if custom_headers:
         headers.update(parse_headers(custom_headers))
 
-    # Automatically try HTTPS first if port is 443 or 8080, with HTTP fallback (or vice versa)
+    common_paths = ["/", "/login", "/admin", "/signin", "/wp-login.php", "/administrator/", "/auth/login"]
     schemes = ["https", "http"] if port in [443, 8080] else ["http", "https"]
-    
     last_error = ""
-    for scheme in schemes:
-        url = f"{scheme}://{host}:{port}/"
-        try:
-            # Disable SSL verification warnings for self-signed audit certificates
-            response = requests.get(url, auth=HTTPBasicAuth(username, password), headers=headers, timeout=3, allow_redirects=True, verify=False)
-            if response.status_code in [200, 302, 204]:
-                return True, f"HTTP Success ({scheme.upper()}) (Status: {response.status_code})"
-            elif response.status_code == 401:
-                return False, f"Unauthorized (401) on {scheme.upper()}"
-            else:
-                return False, f"Unexpected Status: {response.status_code} ({scheme.upper()})"
-        except requests.exceptions.SSLError:
-            last_error = "SSL Certificate Error"
-            continue
-        except requests.exceptions.ConnectionError:
-            last_error = f"Connection Dropped / Reset ({scheme.upper()})"
-            continue
-        except requests.exceptions.Timeout:
-            last_error = "Request Timeout"
-            continue
-        except Exception as e:
-            last_error = f"Error: {e}"
-            continue
 
-    return False, last_error or "Connection Aborted by Remote Host"
+    for scheme in schemes:
+        for login_path in common_paths:
+            url = f"{scheme}://{host}:{port}{login_path}"
+            try:
+                # First, check if the path exists/responds (avoid wasting time on 404s)
+                probe = requests.get(url, headers=headers, timeout=2, allow_redirects=True, verify=False)
+                if probe.status_code == 404:
+                    continue
+                
+                # Try authentication on this valid endpoint
+                response = requests.get(url, auth=HTTPBasicAuth(username, password), headers=headers, timeout=3, allow_redirects=True, verify=False)
+                if response.status_code in [200, 302, 204]:
+                    return True, f"HTTP Success ({scheme.upper()}) at {login_path} (Status: {response.status_code})"
+                elif response.status_code == 401:
+                    return False, f"Unauthorized (401) on {scheme.upper()} {login_path}"
+            except requests.exceptions.SSLError:
+                last_error = "SSL Certificate Error"
+                continue
+            except requests.exceptions.ConnectionError:
+                break # If connection drops for this scheme/port, switch scheme
+            except requests.exceptions.Timeout:
+                continue
+            except Exception as e:
+                continue
+
+    return False, last_error or "No active login endpoint found or authentication failed"
 
 def test_ssh_auth(host, port, username, password):
     if not PARAMIKO_AVAILABLE:
@@ -159,7 +160,7 @@ def perform_auth_check(target_host, port, username, password, custom_headers=Non
     elif port == 5432:
         return test_postgresql_auth(target_host, port, username, password)
     else:
-        return False, "Service protocol handler not implemented yet"
+        return handle_http_protocol(target_host, port, username, password)
 
 def run_credential_spray(target_host, open_ports, user_arg=None, password_arg=None, user_file=None, password_file=None, max_threads=5, delay=0.0, custom_headers=None):
     """
@@ -220,3 +221,30 @@ def run_credential_spray(target_host, open_ports, user_arg=None, password_arg=No
                 pass
 
     return results
+
+
+
+def handle_http_protocol(target, port, username, password):
+    import urllib.request
+    import base64
+    import urllib.error
+    url = f"http://{target}:{port}/"
+    try:
+        req = urllib.request.Request(url)
+        credentials = f"{username}:{password}"
+        encoded = base64.b64encode(credentials.encode()).decode()
+        req.add_header("Authorization", f"Basic {encoded}")
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            if resp.status == 200:
+                return True, "Successful login (HTTP 200)"
+    except urllib.error.HTTPError as e:
+        if e.code == 401:
+            return False, "Invalid credentials (HTTP 401 Unauthorized)"
+        elif e.code == 200:
+            return True, "Successful login (HTTP 200)"
+        return False, f"HTTP Error: {e.code}"
+    except urllib.error.URLError as e:
+        return False, f"Connection failed: {e.reason}"
+    except Exception as e:
+        return False, f"Error: {str(e)}"
+    return False, "Authentication failed"

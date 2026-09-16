@@ -1,0 +1,16 @@
+[*] Target scope expanded: 1 host(s) queued.
+[*] Target ports: [8081]
+
+[*] Processing target: 127.0.0.1
+    [+] Port 8081 is OPEN
+    [+] Discovered open ports on 127.0.0.1: [8081]
+
+==================================================
+                 AUDIT SUMMARY DASHBOARD                 
+==================================================
+ Hosts Scanned         : 1
+ Open Ports Found      : 1
+ Credential Checks Run : 0
+ Successful Logins     : 0
+ Total Elapsed Time    : 0.00 seconds
+==================================================
