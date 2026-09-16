@@ -107,19 +107,19 @@
         <div class="meta-grid">
             <div class="meta-item">
                 <span>Target URL</span>
-                <strong>http://127.0.0.1:8080</strong>
+                <strong>http://127.0.0.1:8080/admin</strong>
             </div>
             <div class="meta-item">
                 <span>Auth Type</span>
-                <strong>FORM</strong>
+                <strong>BASIC</strong>
             </div>
             <div class="meta-item">
                 <span>Scan Duration</span>
-                <strong>0.04s</strong>
+                <strong>0.02s</strong>
             </div>
             <div class="meta-item">
                 <span>Valid Credentials Found</span>
-                <strong style="color: var(--accent-green);">1</strong>
+                <strong style="color: var(--accent-green);">4</strong>
             </div>
         </div>
 
@@ -130,7 +130,8 @@
                     <th>Username</th>
                     <th>Password</th>
                     <th>Endpoint</th>
-                    <th>Harvested Session Cookies</th>
+                    <th>Protocol</th>
+                    <th>Harvested Cookies / Tokens</th>
                     <th>Status</th>
                 </tr>
             </thead>
@@ -138,8 +139,36 @@
                 
         <tr>
             <td><code>admin</code></td>
+            <td><code>wrongpassword123</code></td>
+            <td><a href="http://127.0.0.1:8080/admin" target="_blank">http://127.0.0.1:8080/admin</a></td>
+            <td><code>BASIC</code></td>
+            <td><code>N/A</code></td>
+            <td><code>200</code></td>
+        </tr>
+        
+        <tr>
+            <td><code>admin</code></td>
             <td><code>supersecret2026!</code></td>
-            <td><a href="http://127.0.0.1:8080" target="_blank">http://127.0.0.1:8080</a></td>
+            <td><a href="http://127.0.0.1:8080/admin" target="_blank">http://127.0.0.1:8080/admin</a></td>
+            <td><code>BASIC</code></td>
+            <td><code>N/A</code></td>
+            <td><code>200</code></td>
+        </tr>
+        
+        <tr>
+            <td><code>root</code></td>
+            <td><code>wrongpassword123</code></td>
+            <td><a href="http://127.0.0.1:8080/admin" target="_blank">http://127.0.0.1:8080/admin</a></td>
+            <td><code>BASIC</code></td>
+            <td><code>N/A</code></td>
+            <td><code>200</code></td>
+        </tr>
+        
+        <tr>
+            <td><code>root</code></td>
+            <td><code>supersecret2026!</code></td>
+            <td><a href="http://127.0.0.1:8080/admin" target="_blank">http://127.0.0.1:8080/admin</a></td>
+            <td><code>BASIC</code></td>
             <td><code>N/A</code></td>
             <td><code>200</code></td>
         </tr>

