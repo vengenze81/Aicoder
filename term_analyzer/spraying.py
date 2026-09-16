@@ -1,6 +1,8 @@
 import requests
 from requests.auth import HTTPBasicAuth
 from term_analyzer.defaults import get_defaults_for_port
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
 try:
     import paramiko
@@ -19,6 +21,8 @@ try:
     PSYCOPG2_AVAILABLE = True
 except ImportError:
     PSYCOPG2_AVAILABLE = False
+
+print_lock = threading.Lock()
 
 def test_http_auth(host, port, username, password):
     scheme = "https" if port == 443 else "http"
@@ -77,11 +81,25 @@ def test_postgresql_auth(host, port, username, password):
             return False, "Authentication Failed"
         return False, f"PostgreSQL Error: {err_msg}"
 
-def run_credential_spray(target_host, open_ports, user_arg, password_arg):
+def perform_auth_check(target_host, port, username, password):
+    if port == 22:
+        return test_ssh_auth(target_host, port, username, password)
+    elif port in [80, 443, 8080]:
+        return test_http_auth(target_host, port, username, password)
+    elif port == 3306:
+        return test_mysql_auth(target_host, port, username, password)
+    elif port == 5432:
+        return test_postgresql_auth(target_host, port, username, password)
+    else:
+        return False, "Service protocol handler not implemented yet"
+
+def run_credential_spray(target_host, open_ports, user_arg, password_arg, max_threads=5):
     """
-    Executes live credential spraying and returns a list of result dictionaries.
+    Executes live multithreaded credential spraying and returns a list of result dictionaries.
     """
     results = []
+    tasks = []
+
     for port in open_ports:
         if password_arg or user_arg:
             usernames = [u.strip() for u in user_arg.split(",")] if user_arg else ["admin"]
@@ -92,32 +110,32 @@ def run_credential_spray(target_host, open_ports, user_arg, password_arg):
             print(f"[*] Loaded {len(pairs)} default credential pairs for port {port}")
 
         for username, password in pairs:
-            print(f"[*] Testing {username}:{password} on {target_host}:{port}...", end=" ")
-            
-            success = False
-            msg = ""
-            if port == 22:
-                success, msg = test_ssh_auth(target_host, port, username, password)
-            elif port in [80, 443, 8080]:
-                success, msg = test_http_auth(target_host, port, username, password)
-            elif port == 3306:
-                success, msg = test_mysql_auth(target_host, port, username, password)
-            elif port == 5432:
-                success, msg = test_postgresql_auth(target_host, port, username, password)
-            else:
-                msg = "Service protocol handler not implemented yet"
+            tasks.append((port, username, password))
 
+    def worker(port, username, password):
+        success, msg = perform_auth_check(target_host, port, username, password)
+        with print_lock:
             if success:
-                print(f"\033[92m[SUCCESS] {msg}\033[0m")
+                print(f"[*] Testing {username}:{password} on {target_host}:{port}... \033[92m[SUCCESS] {msg}\033[0m")
             else:
-                print(f"\033[91m[-] {msg}\033[0m")
+                print(f"[*] Testing {username}:{password} on {target_host}:{port}... \033[91m[-] {msg}\033[0m")
+        return {
+            "target": target_host,
+            "port": port,
+            "username": username,
+            "password": password,
+            "success": success,
+            "message": msg
+        }
 
-            results.append({
-                "target": target_host,
-                "port": port,
-                "username": username,
-                "password": password,
-                "success": success,
-                "message": msg
-            })
+    print(f"[*] Starting multithreaded spray across {len(tasks)} total checks using {max_threads} threads...")
+    with ThreadPoolExecutor(max_workers=max_threads) as executor:
+        futures = {executor.submit(worker, port, u, p): (port, u, p) for port, u, p in tasks}
+        for future in as_completed(futures):
+            try:
+                res = future.result()
+                results.append(res)
+            except Exception as e:
+                pass
+
     return results

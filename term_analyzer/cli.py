@@ -10,6 +10,7 @@ def main():
     parser.add_argument("--spray", action="store_true", help="Automatically scan and run default credential spray on open ports")
     parser.add_argument("--user", default=None, help="Custom username(s) separated by commas")
     parser.add_argument("--password", default=None, help="Custom password to spray")
+    parser.add_argument("--threads", type=int, default=5, help="Number of concurrent threads for spraying (default: 5)")
     parser.add_argument("--output", default=None, help="Path to save results as a JSON report file (e.g., results.json)")
 
     args = parser.parse_args()
@@ -25,12 +26,13 @@ def main():
             return
             
         print(f"[*] Discovered open ports for spraying: {open_ports}")
-        print("[*] Initiating automated credential spray...")
+        print("[*] Initiating multithreaded credential spray...")
         spray_results = run_credential_spray(
             target_host=args.target,
             open_ports=open_ports,
             user_arg=args.user,
-            password_arg=args.password
+            password_arg=args.password,
+            max_threads=args.threads
         )
     else:
         open_ports = scan_target_ports(args.target, target_ports)
