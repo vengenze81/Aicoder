@@ -71,8 +71,10 @@ class PortTester:
             details = "Backdoor Command Execution"
         return {"vulnerable": vulnerable, "details": details}
 
-    async def fuzz_http_endpoints(self, base_url: str, paths: list, extensions: list = None, recursive: bool = False):
+    async def fuzz_http_endpoints(self, base_url: str, paths: list, extensions: list = None, recursive: bool = False, exclude_statuses: list = None, exclude_sizes: list = None):
         extensions = extensions or []
+        exclude_statuses = exclude_statuses or [404]
+        exclude_sizes = exclude_sizes or []
         discovered = []
         seen_urls = set()
 
@@ -83,19 +85,25 @@ class PortTester:
                 seen_urls.add(url)
                 try:
                     async with session.get(url, timeout=4, allow_redirects=True) as resp:
-                        if resp.status in {200, 301, 302, 403, 401}:
-                            body = await resp.read()
-                            discovered.append({
-                                "url": str(resp.url),
-                                "status": resp.status,
-                                "size": len(body)
-                            })
-                            if recursive and resp.status in {200, 301, 302} and not url.endswith("/"):
-                                sub_url = url + "/"
-                                for p in paths:
-                                    await test_path(f"{sub_url}{p}")
-                                    for ext in extensions:
-                                        await test_path(f"{sub_url}{p}.{ext}")
+                        body = await resp.read()
+                        status = resp.status
+                        size = len(body)
+
+                        # Apply exclusion filters
+                        if status in exclude_statuses or size in exclude_sizes:
+                            return
+
+                        discovered.append({
+                            "url": str(resp.url),
+                            "status": status,
+                            "size": size
+                        })
+                        if recursive and status in {200, 301, 302} and not url.endswith("/"):
+                            sub_url = url + "/"
+                            for p in paths:
+                                await test_path(f"{sub_url}{p}")
+                                for ext in extensions:
+                                    await test_path(f"{sub_url}{p}.{ext}")
                 except Exception:
                     pass
 

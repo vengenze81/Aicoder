@@ -4,6 +4,7 @@ import logging
 import sys
 import json
 import os
+from datetime import datetime
 from term_analyzer.tester import PortTester
 from term_analyzer.db import DatabaseManager
 
@@ -21,8 +22,11 @@ def load_config():
         "recursive": True,
         "audit": True,
         "output": "recon_report.html",
+        "json_output": "recon_report.json",
         "headers": {},
-        "cookies": {}
+        "cookies": {},
+        "exclude_statuses": [404],
+        "exclude_sizes": []
     }
     if os.path.exists("config.json"):
         try:
@@ -46,7 +50,7 @@ def parse_key_value_pairs(items_list):
             res[k.strip()] = v.strip()
     return res
 
-async def run_scan_on_target(target: str, ports_str: str, fuzz: bool = False, audit: bool = False, spray_pass: str = None, output: str = None, ext: str = None, recursive: bool = False, wordlist: str = None, headers: dict = None, cookies: dict = None) -> None:
+async def run_scan_on_target(target: str, ports_str: str, fuzz: bool = False, audit: bool = False, output: str = None, json_output: str = None, ext: str = None, recursive: bool = False, wordlist: str = None, headers: dict = None, cookies: dict = None, exclude_statuses: list = None, exclude_sizes: list = None) -> None:
     try:
         ports = [int(p.strip()) for p in ports_str.split(",")]
     except ValueError:
@@ -108,8 +112,14 @@ async def run_scan_on_target(target: str, ports_str: str, fuzz: bool = False, au
         for port in web_ports:
             scheme = "https" if port in {443, 8443} else "http"
             base_url = f"{scheme}://{target}:{port}"
-            logger.info(f"[*] Running web directory fuzzing across {base_url} with {len(paths)} paths (Extensions: {extensions_list}, Recursive: {recursive})...")
-            hits = await tester.fuzz_http_endpoints(base_url, paths, extensions=extensions_list, recursive=recursive)
+            logger.info(f"[*] Running web directory fuzzing across {base_url} with {len(paths)} paths...")
+            hits = await tester.fuzz_http_endpoints(
+                base_url, paths, 
+                extensions=extensions_list, 
+                recursive=recursive,
+                exclude_statuses=exclude_statuses,
+                exclude_sizes=exclude_sizes
+            )
             if hits:
                 for hit in hits:
                     print(f" [+] Found: {hit['url']} [Status: {hit['status']}, Size: {hit['size']} bytes]")
@@ -190,6 +200,19 @@ async def run_scan_on_target(target: str, ports_str: str, fuzz: bool = False, au
             f.write(html_content)
         print(f"[+] HTML report successfully saved to {report_filename}")
 
+    # Generate JSON Report if requested
+    if json_output:
+        json_filename = json_output if len(target) == len(json_output.replace(".json", "")) else f"{json_output.replace('.json', '')}_{target.replace('.', '_')}.json"
+        json_payload = {
+            "target": target,
+            "timestamp": datetime.now().isoformat(),
+            "ports": scan_results_data,
+            "fuzz_hits": fuzz_results
+        }
+        with open(json_filename, "w") as jf:
+            json.dump(json_payload, jf, indent=4)
+        print(f"[+] Structured JSON report successfully saved to {json_filename}")
+
 async def main_async(args):
     config = load_config()
 
@@ -199,8 +222,13 @@ async def main_async(args):
     recursive_val = args.recursive if args.recursive else config.get("recursive", False)
     audit_val = args.audit if args.audit else config.get("audit", False)
     output_val = args.output or config.get("output", "report.html")
+    
+    json_output_val = None
+    if args.json is not None:
+        json_output_val = args.json
+    elif config.get("json_output"):
+        json_output_val = config.get("json_output")
 
-    # Combine CLI headers/cookies with config defaults
     headers_val = config.get("headers", {})
     if args.header:
         headers_val.update(parse_key_value_pairs(args.header))
@@ -208,6 +236,20 @@ async def main_async(args):
     cookies_val = config.get("cookies", {})
     if args.cookie:
         cookies_val.update(parse_key_value_pairs(args.cookie))
+
+    exclude_statuses = config.get("exclude_statuses", [404])
+    if args.exclude_status:
+        try:
+            exclude_statuses = [int(s.strip()) for s in args.exclude_status.split(",") if s.strip()]
+        except ValueError:
+            pass
+
+    exclude_sizes = config.get("exclude_sizes", [])
+    if args.exclude_size:
+        try:
+            exclude_sizes = [int(sz.strip()) for sz in args.exclude_size.split(",") if sz.strip()]
+        except ValueError:
+            pass
 
     targets = []
     if args.scan:
@@ -231,13 +273,15 @@ async def main_async(args):
             ports_str=ports_val,
             fuzz=args.fuzz,
             audit=audit_val,
-            spray_pass=args.spray,
             output=output_val,
+            json_output=json_output_val,
             ext=ext_val,
             recursive=recursive_val,
             wordlist=wordlist_val,
             headers=headers_val,
-            cookies=cookies_val
+            cookies=cookies_val,
+            exclude_statuses=exclude_statuses,
+            exclude_sizes=exclude_sizes
         )
 
 def main():
@@ -254,8 +298,11 @@ def main():
     parser.add_argument("--audit", action="store_true", help="Audit discovered services for unauth access")
     parser.add_argument("--spray", help="Candidate password for HTTP basic auth credential spray")
     parser.add_argument("--output", help="Save scan and finding results to an HTML report")
+    parser.add_argument("--json", nargs="?", const="recon_report.json", help="Export scan data to a structured JSON file")
     parser.add_argument("--header", action="append", help="Custom HTTP header (e.g. --header 'Authorization: Bearer xyz')")
     parser.add_argument("--cookie", action="append", help="Custom HTTP cookie (e.g. --cookie 'session_id=12345')")
+    parser.add_argument("--exclude-status", help="Comma-separated HTTP status codes to exclude (e.g. 404,403)")
+    parser.add_argument("--exclude-size", help="Comma-separated response content lengths in bytes to exclude")
     parser.add_argument("log_file", nargs="?", help="Optional log file path")
 
     args = parser.parse_args()
@@ -266,5 +313,5 @@ def main():
     else:
         asyncio.run(main_async(args))
 
-if __name__ == "main":
+if __name__ == "__main__":
     main()

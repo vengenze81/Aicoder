@@ -1,5 +1,10 @@
 {
     "timeout": 30,
     "headers": {},
-    "cookies": {}
+    "cookies": {},
+    "exclude_statuses": [
+        404
+    ],
+    "exclude_sizes": [],
+    "json_output": "recon_report.json"
 }
