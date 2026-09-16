@@ -1,8 +1,9 @@
 from __future__ import annotations
-import socket
+import asyncio
 import re
-from dataclasses import dataclass, asdict
-from typing import Optional
+import socket
+from dataclasses import asdict, dataclass
+from typing import List, Optional
 
 @dataclass(slots=True)
 class ServiceInfo:
@@ -20,7 +21,7 @@ class PortTester:
         self.timeout = timeout
 
     def grab_banner(self, port: int) -> ServiceInfo:
-        """Actively probe a port and grab its banner/version info."""
+        """Synchronously probe a port and grab its banner/version info (backward compatible)."""
         service = ServiceInfo(port=port)
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -28,12 +29,10 @@ class PortTester:
                 s.connect((self.target, port))
                 service.status = "open"
 
-                # Send active probe payload based on common port expectations
                 probe = self._get_probe_payload(port)
                 if probe:
                     s.sendall(probe)
 
-                # Attempt to receive response banner
                 banner_data = s.recv(1024)
                 if banner_data:
                     banner_str = banner_data.decode("utf-8", errors="ignore").strip()
@@ -42,6 +41,41 @@ class PortTester:
         except (socket.timeout, ConnectionRefusedError, OSError):
             service.status = "closed"
         return service
+
+    async def agrab_banner(self, port: int) -> ServiceInfo:
+        """Asynchronously probe a port and grab its banner/version info."""
+        service = ServiceInfo(port=port)
+        try:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(self.target, port),
+                timeout=self.timeout
+            )
+            service.status = "open"
+
+            probe = self._get_probe_payload(port)
+            if probe:
+                writer.write(probe)
+                await writer.drain()
+
+            try:
+                banner_data = await asyncio.wait_for(reader.read(1024), timeout=self.timeout)
+                if banner_data:
+                    banner_str = banner_data.decode("utf-8", errors="ignore").strip()
+                    service.banner = banner_str
+                    service.version = self._extract_version(banner_str)
+            except asyncio.TimeoutError:
+                pass
+
+            writer.close()
+            await writer.wait_closed()
+        except (asyncio.TimeoutError, ConnectionRefusedError, OSError, Exception):
+            service.status = "closed"
+        return service
+
+    async def scan_ports(self, ports: List[int]) -> List[ServiceInfo]:
+        """Concurrently scan multiple ports using asyncio."""
+        tasks = [self.agrab_banner(port) for port in ports]
+        return await asyncio.gather(*tasks)
 
     def _get_probe_payload(self, port: int) -> bytes:
         """Return custom probe payloads to force services to reveal themselves."""
@@ -53,13 +87,11 @@ class PortTester:
 
     def _extract_version(self, banner: str) -> Optional[str]:
         """Extract software version strings using regular expressions."""
-        # Handle standard SSH banners
         if banner.startswith("SSH-"):
             parts = banner.split("-")
             if len(parts) >= 2:
                 return f"SSH {parts[1]}"
 
-        # Match common version patterns like Apache/2.4.49, OpenSSH_8.2p1, nginx/1.18.0
         match = re.search(r"([a-zA-Z\-_]+)[/\s_]([\d\.]+[\w\-]*)", banner)
         if match:
             return f"{match.group(1)} {match.group(2)}"

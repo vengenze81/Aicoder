@@ -27,3 +27,31 @@ class TestTester(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+import asyncio
+
+def test_async_port_scanner():
+    from tester import PortTester
+    tester = PortTester("127.0.0.1", timeout=0.5)
+    
+    async def run_scan():
+        # Scan a couple of ports concurrently
+        return await tester.scan_ports([80, 443])
+        
+    results = asyncio.run(run_scan())
+    assert isinstance(results, list)
+    assert len(results) == 2
+
+import asyncio
+
+def test_async_port_scanner():
+    from tester import PortTester
+    tester = PortTester("127.0.0.1", timeout=0.5)
+    
+    async def run_scan():
+        # Scan a couple of ports concurrently
+        return await tester.scan_ports([80, 443])
+        
+    results = asyncio.run(run_scan())
+    assert isinstance(results, list)
+    assert len(results) == 2

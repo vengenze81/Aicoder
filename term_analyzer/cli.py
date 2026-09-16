@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import logging
 import sys
@@ -12,7 +13,6 @@ from .parser import LogParser, ParsedLog, LogEntry
 from .reporter import json_report, pretty_report
 from .rules import TooManyErrorsRule, UnusedDepWarningRule, ConfigFileFixRule, VulnerableServiceRule
 
-# Try importing PortTester from root project if available
 try:
     from tester import PortTester
 except ImportError:
@@ -39,8 +39,8 @@ def build_rule_set(args: argparse.Namespace) -> List:
         rules.append(ConfigFileFixRule(Path(args.config), dry_run=args.dry_run))
     return rules
 
-def perform_scan(target: str, ports_str: str) -> ParsedLog:
-    """Actively scan target ports and package results into a ParsedLog object."""
+async def perform_scan_async(target: str, ports_str: str) -> ParsedLog:
+    """Actively and concurrently scan target ports using asyncio."""
     if not PortTester:
         raise RuntimeError("PortTester module (`tester.py`) could not be imported.")
     
@@ -48,18 +48,19 @@ def perform_scan(target: str, ports_str: str) -> ParsedLog:
     parsed = ParsedLog()
     
     tester = PortTester(target)
-    log.info("Starting active reconnaissance scan on %s across ports: %s", target, ports)
+    log.info("Starting concurrent async reconnaissance scan on %s across ports: %s", target, ports)
     
-    for port in ports:
-        service = tester.grab_banner(port)
+    services = await tester.scan_ports(ports)
+    
+    for service in services:
         if service.status == "open":
-            msg = f"Discovered open port {port} with banner: {service.banner or 'No banner'}"
+            msg = f"Discovered open port {service.port} with banner: {service.banner or 'No banner'}"
             if service.version:
                 msg += f" (Identified version: {service.version})"
             entry = LogEntry(raw=f"info: {msg}", kind="info")
             parsed.infos.append(entry)
         else:
-            log.debug("Port %s is closed or filtered.", port)
+            log.debug("Port %s is closed or filtered.", service.port)
             
     return parsed
 
@@ -79,7 +80,7 @@ def main(argv: List[str] | None = None) -> int:
 
     try:
         if args.scan:
-            parsed = perform_scan(args.scan, args.ports)
+            parsed = asyncio.run(perform_scan_async(args.scan, args.ports))
         else:
             log.info("Parsing terminal output stream...")
             source = args.input if args.input is not None else sys.stdin
