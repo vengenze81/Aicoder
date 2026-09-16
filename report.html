@@ -115,11 +115,11 @@
             </div>
             <div class="meta-item">
                 <span>Scan Duration</span>
-                <strong>0.04s</strong>
+                <strong>0.05s</strong>
             </div>
             <div class="meta-item">
                 <span>Valid Credentials Found</span>
-                <strong style="color: var(--accent-green);">4</strong>
+                <strong style="color: var(--accent-green);">8</strong>
             </div>
         </div>
 
@@ -138,7 +138,34 @@
             <tbody>
                 
         <tr>
-            <td><code>root</code></td>
+            <td><code>admin</code></td>
+            <td><code>supersecret2026!</code></td>
+            <td><a href="http://127.0.0.1:8080/api/v1/protected" target="_blank">http://127.0.0.1:8080/api/v1/protected</a></td>
+            <td><code>BEARER</code></td>
+            <td><code>N/A</code></td>
+            <td><code>200</code></td>
+        </tr>
+        
+        <tr>
+            <td><code>admin</code></td>
+            <td><code>secret</code></td>
+            <td><a href="http://127.0.0.1:8080/api/v1/protected" target="_blank">http://127.0.0.1:8080/api/v1/protected</a></td>
+            <td><code>BEARER</code></td>
+            <td><code>N/A</code></td>
+            <td><code>200</code></td>
+        </tr>
+        
+        <tr>
+            <td><code>admin</code></td>
+            <td><code>your-256-bit-secret</code></td>
+            <td><a href="http://127.0.0.1:8080/api/v1/protected" target="_blank">http://127.0.0.1:8080/api/v1/protected</a></td>
+            <td><code>BEARER</code></td>
+            <td><code>N/A</code></td>
+            <td><code>200</code></td>
+        </tr>
+        
+        <tr>
+            <td><code>admin</code></td>
             <td><code>wrongpassword123</code></td>
             <td><a href="http://127.0.0.1:8080/api/v1/protected" target="_blank">http://127.0.0.1:8080/api/v1/protected</a></td>
             <td><code>BEARER</code></td>
@@ -156,8 +183,8 @@
         </tr>
         
         <tr>
-            <td><code>admin</code></td>
-            <td><code>supersecret2026!</code></td>
+            <td><code>root</code></td>
+            <td><code>wrongpassword123</code></td>
             <td><a href="http://127.0.0.1:8080/api/v1/protected" target="_blank">http://127.0.0.1:8080/api/v1/protected</a></td>
             <td><code>BEARER</code></td>
             <td><code>N/A</code></td>
@@ -165,8 +192,17 @@
         </tr>
         
         <tr>
-            <td><code>admin</code></td>
-            <td><code>wrongpassword123</code></td>
+            <td><code>root</code></td>
+            <td><code>your-256-bit-secret</code></td>
+            <td><a href="http://127.0.0.1:8080/api/v1/protected" target="_blank">http://127.0.0.1:8080/api/v1/protected</a></td>
+            <td><code>BEARER</code></td>
+            <td><code>N/A</code></td>
+            <td><code>200</code></td>
+        </tr>
+        
+        <tr>
+            <td><code>root</code></td>
+            <td><code>secret</code></td>
             <td><a href="http://127.0.0.1:8080/api/v1/protected" target="_blank">http://127.0.0.1:8080/api/v1/protected</a></td>
             <td><code>BEARER</code></td>
             <td><code>N/A</code></td>
