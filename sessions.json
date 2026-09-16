@@ -2,6 +2,7 @@
     {
         "username": "admin",
         "cookies": {},
-        "headers": {}
+        "headers": {},
+        "jwt_candidates": []
     }
 ]
