@@ -1,5 +1,5 @@
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.progress import track, Progress, SpinnerColumn, TextColumn
 import asyncio
 import argparse
 import logging
@@ -72,7 +72,7 @@ async def run_scan_on_target(target: str, ports_str: str, fuzz: bool = False, au
     console.print("┡━━━━━━━━━━━━━━━━╇━━━━━━╇━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━┩")
     
     scan_results_data = []
-    for p in ports:
+    for p in track(ports, description='[cyan]Scanning ports...'):
         status = "closed"
         matched_open = next((item for item in open_ports if item["port"] == p), None)
         if matched_open:
@@ -111,7 +111,7 @@ async def run_scan_on_target(target: str, ports_str: str, fuzz: bool = False, au
 
         extensions_list = [e.strip() for e in ext.split(",")] if ext else []
 
-        for port in web_ports:
+        for port in track(web_ports, description='[cyan]Auditing web endpoints...'):
             scheme = "https" if port in {443, 8443} else "http"
             base_url = f"{scheme}://{target}:{port}"
             logger.info(f"[*] Running web directory fuzzing across {base_url} with {len(paths)} paths...")
@@ -269,7 +269,7 @@ async def main_async(args):
         console.print("Error: Either --scan <ip> or --cidr <subnet> must be specified.")
         sys.exit(1)
 
-    for target in targets:
+    for target in track(targets, description='[cyan]Sweeping targets...'):
         await run_scan_on_target(
             target=target,
             ports_str=ports_val,

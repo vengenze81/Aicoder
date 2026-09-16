@@ -14,4 +14,6 @@ term_analyzer.egg-info/dependency_links.txt
 term_analyzer.egg-info/entry_points.txt
 term_analyzer.egg-info/requires.txt
 term_analyzer.egg-info/top_level.txt
+tests/test_db.py
 tests/test_term_analyzer.py
+tests/test_tester.py

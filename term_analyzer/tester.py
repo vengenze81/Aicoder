@@ -1,3 +1,4 @@
+from rich.progress import track
 import asyncio
 import socket
 import aiohttp
@@ -14,7 +15,7 @@ class PortTester:
 
     async def scan_ports(self, ports: list):
         open_ports = []
-        for port in ports:
+        for port in track(ports, description='[cyan]Testing ports...'):
             try:
                 conn = asyncio.open_connection(self.target, port)
                 reader, writer = await asyncio.wait_for(conn, timeout=1.5)
@@ -44,7 +45,7 @@ class PortTester:
         common_ports = [80, 443, 8080, 22, 21]
 
         async def check_host(ip):
-            for port in common_ports:
+            for port in track(common_ports, description='[cyan]Testing common ports...'):
                 try:
                     conn = asyncio.open_connection(str(ip), port)
                     _, writer = await asyncio.wait_for(conn, timeout=0.4)

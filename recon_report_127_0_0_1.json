@@ -1,9 +1,29 @@
 {
     "target": "127.0.0.1",
-    "timestamp": "2026-09-16T15:05:00.799953",
+    "timestamp": "2026-09-16T15:09:56.641879",
     "ports": [
         {
+            "port": 22,
+            "status": "closed",
+            "audit": "Secure / N/A"
+        },
+        {
             "port": 80,
+            "status": "closed",
+            "audit": "Secure / N/A"
+        },
+        {
+            "port": 443,
+            "status": "closed",
+            "audit": "Secure / N/A"
+        },
+        {
+            "port": 8080,
+            "status": "open",
+            "audit": "Checked / Secure"
+        },
+        {
+            "port": 8443,
             "status": "closed",
             "audit": "Secure / N/A"
         }
