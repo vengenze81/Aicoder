@@ -17,26 +17,26 @@
 <body>
     <h1>🛡️ TermAnalyzer Reconnaissance & Credential Spray Report</h1>
     <div class="meta">
-        <p><strong>Target Scope:</strong> 127.0.0.1</p>
-        <p><strong>Timestamp:</strong> 2026-09-16T13:32:35.502134</p>
+        <p><strong>Target Scope:</strong> 192.168.68.102</p>
+        <p><strong>Timestamp:</strong> 2026-09-16T13:56:17.791214</p>
     </div>
 
     <h2>Discovered Services & Audits</h2>
     <table>
         <tr><th>Host</th><th>Port</th><th>Status</th><th>Audit Finding</th></tr>
-        <tr><td>127.0.0.1</td><td>9090</td><td>open</td><td class="high">Secure / N/A</td></tr>
+        <tr><td>192.168.68.102</td><td>8080</td><td>open</td><td class="high">Secure / N/A</td></tr>
     </table>
 
     <h2>Credential Spray Results</h2>
     <table>
         <tr><th>Target URL</th><th>Username</th><th>Password</th><th>Status</th></tr>
-        <tr><td>http://127.0.0.1:9090</td><td class="success">admin</td><td>admin</td><td>200 (SUCCESS)</td></tr><tr><td>http://127.0.0.1:9090</td><td class="success">root</td><td>admin</td><td>200 (SUCCESS)</td></tr><tr><td>http://127.0.0.1:9090</td><td class="success">user</td><td>admin</td><td>200 (SUCCESS)</td></tr><tr><td>http://127.0.0.1:9090</td><td class="success">guest</td><td>admin</td><td>200 (SUCCESS)</td></tr><tr><td>http://127.0.0.1:9090</td><td class="success">administrator</td><td>admin</td><td>200 (SUCCESS)</td></tr><tr><td>http://127.0.0.1:9090</td><td class="success">postgres</td><td>admin</td><td>200 (SUCCESS)</td></tr><tr><td>http://127.0.0.1:9090</td><td class="success">tomcat</td><td>admin</td><td>200 (SUCCESS)</td></tr>
+        <tr><td colspan='4'>No successful credential sprays recorded.</td></tr>
     </table>
 
     <h2>CVE Vulnerability & Exploit Advisory</h2>
     <table>
         <tr><th>Severity</th><th>CVSS</th><th>CVE / Rule ID</th><th>Remediation Action</th></tr>
-        <tr><td class="medium">MEDIUM</td><td>7.5</td><td>CVE-2019-0232</td><td>Disable CGI Servlet or upgrade Tomcat.</td></tr>
+        <tr><td colspan='4'>No known vulnerabilities matched.</td></tr>
     </table>
 </body>
 </html>

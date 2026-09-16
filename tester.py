@@ -1,71 +1,52 @@
 import asyncio
 import socket
-import ipaddress
 import urllib.request
 import urllib.error
 import base64
-from dataclasses import dataclass
-
-@dataclass
-class ServiceInfo:
-    host: str
-    port: int
-    banner: str
-    status: str
 
 class PortTester:
-    def __init__(self, target: str, timeout: float = 2.0):
+    def __init__(self, target: str):
         self.target = target
-        self.timeout = timeout
 
-    async def agrab_banner(self, port: int) -> ServiceInfo:
+    def test_port(self, port: int) -> dict:
         try:
-            reader, writer = await asyncio.wait_for(
-                asyncio.open_connection(self.target, port),
-                timeout=self.timeout
-            )
-            banner = ""
-            try:
-                data = await asyncio.wait_for(reader.read(1024), timeout=1.0)
-                banner = data.decode("utf-8", errors="ignore").strip()
-            except asyncio.TimeoutError:
-                pass
-
-            writer.close()
-            await writer.wait_closed()
-            return ServiceInfo(host=self.target, port=port, banner=banner, status="open")
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(1.5)
+            result = s.connect_ex((self.target, port))
+            s.close()
+            if result == 0:
+                banner = ""
+                try:
+                    s2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    s2.settimeout(1.0)
+                    s2.connect((self.target, port))
+                    s2.sendall(b"HEAD / HTTP/1.0\r\n\r\n")
+                    banner = s2.recv(1024).decode("utf-8", errors="ignore")
+                    s2.close()
+                except Exception:
+                    pass
+                return {"port": port, "status": "open", "banner": banner.strip()}
+            return {"port": port, "status": "closed", "banner": ""}
         except Exception:
-            return ServiceInfo(host=self.target, port=port, banner="", status="closed")
+            return {"port": port, "status": "filtered", "banner": ""}
 
-    async def scan_ports(self, ports: list[int]) -> list[ServiceInfo]:
-        tasks = [self.agrab_banner(port) for port in ports]
+    async def scan_ports(self, ports: list[int]) -> list[dict]:
+        loop = asyncio.get_running_loop()
+        tasks = [loop.run_in_executor(None, self.test_port, p) for p in ports]
         results = await asyncio.gather(*tasks)
-        return [res for res in results if res.status == "open"]
+        return [r for r in results if r["status"] == "open"]
 
-    async def scan_subnet(self, subnet_str: str, ports: list[int]) -> list[ServiceInfo]:
-        try:
-            network = ipaddress.ip_network(subnet_str, strict=False)
-            hosts = [str(ip) for ip in network.hosts()]
-            if not hosts:
-                hosts = [str(network.network_address)]
-        except ValueError:
-            hosts = [subnet_str]
+    async def fuzz_http_endpoints(self, base_url: str, paths: list[str], extensions: list[str] = None, recursive: bool = False, max_depth: int = 2, current_depth: int = 1) -> list[dict]:
+        extensions = extensions or []
+        found_results = []
+        checked_urls = set()
 
-        tasks = []
-        for host in hosts:
-            for port in ports:
-                sub_tester = PortTester(target=host, timeout=self.timeout)
-                tasks.append(sub_tester.agrab_banner(port))
-
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        valid_services = [res for res in results if isinstance(res, ServiceInfo) and res.status == "open"]
-        return valid_services
-
-    async def fuzz_http_endpoints(self, base_url: str, paths: list[str]) -> list[dict]:
-        async def check_path(path: str):
-            url = f"{base_url.rstrip('/')}/{path.lstrip('/')}"
-            loop = asyncio.get_running_loop()
+        async def check_path(url: str):
+            if url in checked_urls:
+                return None
+            checked_urls.add(url)
             
+            loop = asyncio.get_running_loop()                                
             def _sync_request():
                 try:
                     req = urllib.request.Request(
@@ -84,9 +65,31 @@ class PortTester:
                 return {"url": url, "status": status, "size": size}
             return None
 
-        tasks = [check_path(path) for path in paths]
+        target_urls = []
+        for path in paths:
+            clean_path = path.strip("/")
+            if not clean_path:
+                continue
+            target_urls.append(f"{base_url.rstrip('/')}/{clean_path}")
+            if "." not in clean_path:
+                for ext in extensions:
+                    clean_ext = ext.lstrip(".")
+                    target_urls.append(f"{base_url.rstrip('/')}/{clean_path}.{clean_ext}")
+
+        tasks = [check_path(u) for u in target_urls]
         responses = await asyncio.gather(*tasks)
-        return [r for r in responses if r is not None]
+        valid_hits = [r for r in responses if r is not None]
+        found_results.extend(valid_hits)
+
+        if recursive and current_depth < max_depth:
+            for hit in valid_hits:
+                if hit["status"] in [200, 301, 302]:
+                    hit_url = hit["url"]
+                    sub_paths = ["admin", "api", "config", "status", "v1", "test"]
+                    sub_results = await self.fuzz_http_endpoints(hit_url, sub_paths, extensions=extensions, recursive=True, max_depth=max_depth, current_depth=current_depth + 1)
+                    found_results.extend(sub_results)
+
+        return found_results
 
     async def audit_service(self, port: int, banner: str) -> dict:
         """Perform lightweight, unauthenticated or default credential checks on specific services."""
@@ -94,7 +97,6 @@ class PortTester:
 
         def _audit_sync():
             try:
-                # Redis check (6379)
                 if port == 6379 or "redis" in banner.lower():
                     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     s.settimeout(2.0)
@@ -105,7 +107,6 @@ class PortTester:
                     if "PONG" in resp:
                         return {"vulnerable": True, "details": "Redis server allows UNAUTHENTICATED access (PONG received)."}
 
-                # FTP check (21)
                 elif port == 21 or "ftp" in banner.lower():
                     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     s.settimeout(3.0)
@@ -119,11 +120,9 @@ class PortTester:
                     if "230" in r2 or "Login successful" in r2:
                         return {"vulnerable": True, "details": "FTP server allows ANONYMOUS login."}
 
-                # HTTP / Web checks for default creds (Tomcat, Jenkins, etc.)
                 elif port in {80, 443, 8080, 8443, 8000, 5000, 9090}:
                     scheme = "https" if port in {443, 8443} else "http"
                     base_url = f"{scheme}://{self.target}:{port}"
-                    
                     try:
                         req = urllib.request.Request(base_url, headers={"User-Agent": "Mozilla/5.0"})
                         with urllib.request.urlopen(req, timeout=3) as resp:
@@ -155,7 +154,6 @@ class PortTester:
             return {"vulnerable": False, "details": ""}
 
         return await loop.run_in_executor(None, _audit_sync)
-
 
     async def credential_spray_http(self, base_url: str, usernames: list[str], password: str) -> list[dict]:
         """Perform an asynchronous credential spray (one password across multiple usernames) via HTTP Basic Auth."""

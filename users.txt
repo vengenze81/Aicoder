@@ -1,0 +1,8 @@
+admin
+root
+user
+guest
+test
+administrator
+manager
+api

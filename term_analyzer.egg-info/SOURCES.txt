@@ -6,6 +6,7 @@ term_analyzer/cli.py
 term_analyzer/parser.py
 term_analyzer/reporter.py
 term_analyzer/rules.py
+term_analyzer/tui.py
 term_analyzer.egg-info/PKG-INFO
 term_analyzer.egg-info/SOURCES.txt
 term_analyzer.egg-info/dependency_links.txt
