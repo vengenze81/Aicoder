@@ -7,6 +7,7 @@ from rich.console import Console
 from term_analyzer.spraying import load_payload_files, fuzz_advanced
 from term_analyzer.reporter import json_report, pretty_report, generate_html_report
 from term_analyzer.templates import run_template_scan
+from term_analyzer.jwt_utils import decode_jwt, brute_force_jwt, download_wordlist
 
 console = Console()
 
@@ -23,9 +24,14 @@ async def run_intruder_async(args):
         
     console.print(f"[bold cyan][*] Loaded {len(combinations)} payload combinations for mode: {mode.upper()}[/bold cyan]")
     
+    # Parse exclusion filters
+    exclude_statuses = {int(s.strip()) for s in args.exclude_status.split(",")} if args.exclude_status else set()
+    exclude_lengths = {int(l.strip()) for l in args.exclude_length.split(",")} if args.exclude_length else set()
+    
     semaphore = asyncio.Semaphore(args.concurrency)
     pause_lock = asyncio.Lock()
     results = []
+    filtered_count = 0
     
     async with aiohttp.ClientSession() as session:
         tasks = [
@@ -49,6 +55,10 @@ async def run_intruder_async(args):
         responses = await asyncio.gather(*tasks)
         
     for combo, status, length, text, secrets in responses:
+        if status in exclude_statuses or length in exclude_lengths:
+            filtered_count += 1
+            continue
+            
         results.append({
             "payloads": list(combo),
             "status_code": status,
@@ -56,6 +66,9 @@ async def run_intruder_async(args):
             "response_snippet": text[:150],
             "extracted_secrets": secrets
         })
+        
+    if filtered_count > 0:
+        console.print(f"[dim][*] Filtered out {filtered_count} uninteresting response(s) based on your criteria.[/dim]")
         
     report_data = {
         "mode": "intruder",
@@ -99,6 +112,27 @@ async def run_template_async(args):
     if args.html_report:
         generate_html_report(report_data, args.html_report)
 
+def handle_jwt_commands(args):
+    if args.jwt_inspect:
+        header, payload, err = decode_jwt(args.jwt_inspect)
+        if err:
+            console.print(f"[bold red][!] Error decoding JWT: {err}[/bold red]")
+            return
+        console.print("[bold green]=== JWT Header ===[/bold green]")
+        console.print(header)
+        console.print("[bold green]=== JWT Payload ===[/bold green]")
+        console.print(payload)
+
+    if args.jwt_brute:
+        if not args.wordlist:
+            console.print("[bold red][!] Please specify a wordlist using --wordlist for JWT brute-forcing.[/bold red]")
+            return
+        secret = asyncio.run(brute_force_jwt(args.jwt_brute, args.wordlist))
+        if secret:
+            console.print(f"[bold green][+] SUCCESS! Found weak JWT secret: {secret}[/bold green]")
+        else:
+            console.print("[bold yellow][-] Secret not found in wordlist.[/bold yellow]")
+
 def main():
     parser = argparse.ArgumentParser(description="Term Analyzer - Advanced Security Assessment Framework")
     parser.add_argument("--target", type=str, default=None, help="Target URL or IP (Base URL for template scans)")
@@ -108,6 +142,10 @@ def main():
     parser.add_argument("--fuzz-url", type=str, help="URL template with §§ insertion points")
     parser.add_argument("--fuzz-body", type=str, default=None, help="POST/PUT body template with §§ insertion points")
     parser.add_argument("--template", type=str, default=None, help="Path to YAML template file or directory")
+    parser.add_argument("--jwt-inspect", type=str, default=None, help="Inspect and decode a JWT token")
+    parser.add_argument("--jwt-brute", type=str, default=None, help="Brute-force HS256 JWT secret using a wordlist")
+    parser.add_argument("--download-wordlist", choices=["jwt", "directories", "parameters"], default=None, help="Download standard wordlists: jwt, directories, parameters")
+    parser.add_argument("--wordlist", type=str, default=None, help="Path to wordlist file for JWT brute-force")
     parser.add_argument("--method", type=str, default="GET", help="HTTP method")
     parser.add_argument("--concurrency", type=int, default=10, help="Max concurrent requests")
     parser.add_argument("--delay", type=float, default=0.0, help="Delay between requests")
@@ -115,15 +153,21 @@ def main():
     parser.add_argument("--smart-pause", action="store_true", help="Pause on 429 rate-limits")
     parser.add_argument("--lockout-str", type=str, default=None, help="String indicating lockout/rate limit")
     parser.add_argument("--pause-duration", type=float, default=15.0, help="Duration to pause on rate-limit")
+    parser.add_argument("--exclude-status", type=str, default=None, help="Comma-separated status codes to exclude (e.g., 404,403)")
+    parser.add_argument("--exclude-length", type=str, default=None, help="Comma-separated response lengths to exclude (e.g., 9,120)")
     parser.add_argument("--json-report", type=str, default=None, help="Save JSON report filename")
     parser.add_argument("--html-report", type=str, default=None, help="Save HTML report filename")
 
     args = parser.parse_args()
     
-    if args.intruder:
+    if args.download_wordlist:
+        download_wordlist(args.download_wordlist)
+    elif args.intruder:
         asyncio.run(run_intruder_async(args))
     elif args.template and args.target:
         asyncio.run(run_template_async(args))
+    elif args.jwt_inspect or args.jwt_brute:
+        handle_jwt_commands(args)
     else:
         parser.print_help()
 
