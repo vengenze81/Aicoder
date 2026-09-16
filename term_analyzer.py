@@ -341,6 +341,65 @@ def audit_mfa_flow(session, mfa_url, otp_field, test_codes, proxy_pool, single_p
     print("="*60)
     return mfa_findings
 
+def audit_password_policy(session, policy_url, current_pass_field, current_password, policy_field, content_type, proxy_pool, single_proxy, base_headers, cookies, extract_csrf, csrf_field, throttler):
+    """Probes password change or registration endpoints to reverse-engineer server-side complexity policies."""
+    print("\n" + "="*60 + "\n[*] Starting Automated Password Policy Audit:")
+    print(f"    - Target Policy Endpoint: {policy_url}")
+
+    probes = [
+        ("Length 4 (too short)", "ab1!"),
+        ("Length 6", "abcd1!"),
+        ("Length 8 (standard min)", "abcdef1!"),
+        ("No Uppercase", "abcdef1!"),
+        ("No Lowercase", "ABCDEF1!"),
+        ("No Digits", "Abcdefgh!"),
+        ("No Special Characters", "Abcdefgh1")
+    ]
+
+    req_proxies = get_request_proxies(proxy_pool, single_proxy)
+    policy_findings = []
+
+    for desc, pwd in probes:
+        headers = base_headers.copy()
+        hidden_inputs = {}
+        csrf_token = None
+
+        apply_delay_sleep(throttler)
+        start_time = time.time()
+        try:
+            get_resp = session.get(policy_url, headers=headers, cookies=cookies, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
+            if get_resp.status_code == 200:
+                if extract_csrf:
+                    csrf_token = extract_csrf_token(get_resp.text, csrf_field)
+
+            payload = {policy_field: pwd}
+            if current_pass_field and current_password:
+                payload[current_pass_field] = current_password
+            if csrf_token:
+                payload[csrf_field] = csrf_token
+
+            if content_type == "json":
+                headers["Content-Type"] = "application/json"
+                resp = session.post(policy_url, data=json.dumps(payload), headers=headers, cookies=cookies, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
+            else:
+                headers["Content-Type"] = "application/x-www-form-urlencoded"
+                resp = session.post(policy_url, data=payload, headers=headers, cookies=cookies, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
+
+            elapsed = time.time() - start_time
+            throttler.record_response(elapsed, resp.status_code if resp else 0)
+
+            resp_text = resp.text.lower() if resp else ""
+            is_rejected = any(kw in resp_text for kw in ["error", "invalid", "weak", "policy", "minimum", "character", "requirements", "failed", "short"]) or resp.status_code not in [200, 201, 302, 303]
+
+            status_str = "REJECTED" if is_rejected else "ACCEPTED (Allowed)"
+            print(f"    - Probe [{desc}] ('{pwd}'): {status_str} (Status: {resp.status_code})")
+            policy_findings.append({"description": desc, "password": pwd, "rejected": is_rejected, "status_code": resp.status_code})
+        except requests.exceptions.RequestException as e:
+            print(f"    [!] Error testing probe {desc}: {e}")
+
+    print("="*60)
+    return policy_findings
+
 def test_user_existence(session, target_url, username, auth_type, content_type, user_field, pass_field, proxy_pool, single_proxy, base_headers, cookies, extract_csrf, csrf_field, probe_password, throttler, verbose):
     """Probes a single username with a dummy password to check for account existence via differential response analysis."""
     headers = base_headers.copy()
@@ -873,7 +932,7 @@ def run_analysis(args):
         for user, pwd, combo_url in combos:
             endpoint = combo_url if combo_url else args.url
             tasks.append((user, pwd, endpoint))
-    else:
+    elif not args.policy_check:
         usernames = load_wordlist(args.users)
         passwords = load_wordlist(args.passwords)
         
@@ -904,7 +963,15 @@ def run_analysis(args):
     if args.adaptive_delay:
         print("[*] Adaptive Throttling & Auto-Backoff Enabled: Active latency monitoring engaged.")
 
-    if args.enum_users and not args.combo_file:
+    # Automated Password Policy Audit if enabled
+    if args.policy_check and args.policy_url:
+        audit_password_policy(
+            session, args.policy_url, args.current_pass_field, args.current_password,
+            args.policy_field, args.content_type, proxy_pool, args.proxy, base_headers,
+            cookies, args.extract_csrf, args.csrf_field, throttler
+        )
+
+    if args.enum_users and not args.combo_file and not args.policy_check:
         usernames_list = list(set([t[0] for t in tasks]))
         run_user_enumeration(
             session, args.url, usernames_list, args.auth_type, args.content_type,
@@ -913,40 +980,40 @@ def run_analysis(args):
             throttler, args.threads, args.verbose
         )
 
-    print(f"[*] Running audit with max {args.threads} concurrent threads...\n" + "-" * 60)
-
-    all_results = []
     valid_credentials = []
+    all_results = []
 
-    with ThreadPoolExecutor(max_workers=args.threads) as executor:
-        futures = [
-            executor.submit(
-                test_auth, session, endpoint, user, pwd, args.auth_type,
-                args.content_type, args.user_field, args.pass_field, args.failure_keyword, 
-                args.success_regex, proxy_pool, args.proxy, base_headers, 
-                cookies, circuit_breaker, throttler, args.extract_csrf, args.csrf_field, 
-                args.lockout_keyword, args.verbose
-            )
-            for user, pwd, endpoint in tasks
-        ]
+    if tasks:
+        print(f"[*] Running audit with max {args.threads} concurrent threads...\n" + "-" * 60)
+        with ThreadPoolExecutor(max_workers=args.threads) as executor:
+            futures = [
+                executor.submit(
+                    test_auth, session, endpoint, user, pwd, args.auth_type,
+                    args.content_type, args.user_field, args.pass_field, args.failure_keyword, 
+                    args.success_regex, proxy_pool, args.proxy, base_headers, 
+                    cookies, circuit_breaker, throttler, args.extract_csrf, args.csrf_field, 
+                    args.lockout_keyword, args.verbose
+                )
+                for user, pwd, endpoint in tasks
+            ]
 
-        for future in as_completed(futures):
-            if circuit_breaker.is_tripped():
-                break
-            res = future.result()
-            if res:
-                all_results.append(res)
-                if res['success']:
-                    valid_credentials.append({
-                        "username": res['username'],
-                        "password": res['password'],
-                        "endpoint": res['endpoint'],
-                        "type": res['type'],
-                        "status_code": res['status_code'],
-                        "session_cookies": res['session_cookies'],
-                        "session_headers": res['session_headers'],
-                        "jwt_candidates": res.get('jwt_candidates', [])
-                    })
+            for future in as_completed(futures):
+                if circuit_breaker.is_tripped():
+                    break
+                res = future.result()
+                if res:
+                    all_results.append(res)
+                    if res['success']:
+                        valid_credentials.append({
+                            "username": res['username'],
+                            "password": res['password'],
+                            "endpoint": res['endpoint'],
+                            "type": res['type'],
+                            "status_code": res['status_code'],
+                            "session_cookies": res['session_cookies'],
+                            "session_headers": res['session_headers'],
+                            "jwt_candidates": res.get('jwt_candidates', [])
+                        })
 
     if circuit_breaker.is_tripped():
         print("\n[!] Scan aborted early due to Circuit Breaker trip (Account Lockout Safeguard activated).")
@@ -985,7 +1052,7 @@ def run_analysis(args):
     return valid_credentials, timing_vulns, length_outliers
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Advanced Security Analyzer with Combo & Domain Support")
+    parser = argparse.ArgumentParser(description="Advanced Security Analyzer with Policy Checker")
     parser.add_argument("-u", "--url", default="http://127.0.0.1:8080/login", help="Target URL")
     parser.add_argument("--auth-type", choices=["form", "basic", "digest"], default="form", help="Authentication type to test")
     parser.add_argument("--content-type", choices=["form", "json"], default="form", help="Payload content type for form/API auth")
@@ -1002,6 +1069,11 @@ if __name__ == "__main__":
     parser.add_argument("--mfa-url", help="Target endpoint for secondary MFA/OTP verification")
     parser.add_argument("--otp-field", default="otp_code", help="Form field name for the OTP/verification code")
     parser.add_argument("--otp-list", default="passwords.txt", help="Wordlist file containing candidate OTP/PIN codes")
+    parser.add_argument("--policy-check", action="store_true", help="Enable automated password complexity & policy checker")
+    parser.add_argument("--policy-url", help="Target endpoint for password policy probing (e.g., /register or /change-password)")
+    parser.add_argument("--policy-field", default="new_password", help="Form/JSON field name for the new password being tested")
+    parser.add_argument("--current-pass-field", default="current_password", help="Form field name for current password if required")
+    parser.add_argument("--current-password", help="Actual current password if required by change endpoint")
     parser.add_argument("--combo-file", help="Path to combo file (user:pass, domain\\user:pass, or url:user:pass)")
     parser.add_argument("--users", default="usernames.txt", help="Path to usernames wordlist")
     parser.add_argument("--passwords", default="passwords.txt", help="Path to passwords wordlist")
