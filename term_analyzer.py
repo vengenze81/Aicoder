@@ -238,6 +238,38 @@ def audit_jwt_token(token, secret_file):
         "vulnerabilities": vulnerabilities
     }
 
+def audit_mfa_flow(session, mfa_url, otp_field, test_codes, proxy_pool, single_proxy, base_headers, cookies):
+    """Audits secondary MFA/OTP verification endpoints for bypass flaws or valid code reuse."""
+    print("\n" + "="*60 + "\n[*] Starting Multi-Factor Authentication (MFA) Flow Audit:")
+    print(f"    - Target MFA Endpoint: {mfa_url}")
+    print(f"    - Testing {len(test_codes)} candidate OTP code(s)...")
+
+    req_proxies = get_request_proxies(proxy_pool, single_proxy)
+    mfa_findings = []
+
+    for code in test_codes:
+        headers = base_headers.copy()
+        headers["Content-Type"] = "application/x-www-form-urlencoded"
+        payload = {otp_field: code}
+        
+        try:
+            resp = session.post(mfa_url, data=payload, headers=headers, cookies=cookies, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
+            if resp.status_code in [200, 302, 303]:
+                # Check if submission succeeded (did not return to MFA prompt or error)
+                if "invalid" not in resp.text.lower() and "error" not in resp.text.lower() and "code" not in resp.text.lower():
+                    print(f"    [+] [MFA BYPASS / SUCCESS] Valid access achieved using OTP code: '{code}' (Status: {resp.status_code})")
+                    mfa_findings.append({"code": code, "status_code": resp.status_code})
+                    break
+                else:
+                    print(f"    [-] Tested OTP '{code}' -> Rejected")
+        except requests.exceptions.RequestException as e:
+            print(f"    [!] Request error during MFA test with code {code}: {e}")
+
+    if not mfa_findings:
+        print("    [+] MFA endpoint properly rejected all test codes.")
+    print("="*60)
+    return mfa_findings
+
 def test_user_existence(session, target_url, username, auth_type, content_type, user_field, pass_field, proxy_pool, single_proxy, base_headers, cookies, extract_csrf, csrf_field, probe_password, delay, verbose):
     """Probes a single username with a dummy password to check for account existence via differential response analysis."""
     headers = base_headers.copy()
@@ -417,9 +449,12 @@ def test_auth(session, target_url, username, password, auth_type, content_type, 
 
         captured_cookies = {c.name: c.value for c in resp.cookies} if resp else {}
         captured_headers = {k: v for k, v in resp.headers.items() if 'auth' in k.lower() or 'token' in k.lower() or 'set-cookie' in k.lower()} if resp else {}
-        
-        # Also check response body for any JWT strings if present
         jwt_candidates = re.findall(r'ey[A-Za-z0-9_-]+\.ey[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+', resp.text) if resp else []
+
+        # Check if response indicates MFA challenge trigger
+        is_mfa_challenge = False
+        if resp and any(keyword in resp.text.lower() for keyword in ["mfa", "otp", "two-factor", "authenticator code", "verification code"]):
+            is_mfa_challenge = True
 
         result = {
             "username": username,
@@ -430,13 +465,17 @@ def test_auth(session, target_url, username, password, auth_type, content_type, 
             "response_time": elapsed,
             "response_length": resp_length,
             "success": is_success,
+            "is_mfa_challenge": is_mfa_challenge,
             "session_cookies": captured_cookies,
             "session_headers": captured_headers,
             "jwt_candidates": jwt_candidates
         }
 
         if is_success:
-            print(f"\n[+] [SUCCESS] Valid login found -> {username}:{password} at {target_url} [{auth_type.upper()}]")
+            if is_mfa_challenge:
+                print(f"\n[+] [MFA CHALLENGE] Valid login found ({username}:{password}), but MFA verification required at {target_url}")
+            else:
+                print(f"\n[+] [SUCCESS] Valid login found -> {username}:{password} at {target_url} [{auth_type.upper()}]")
             if captured_cookies:
                 print(f"    [+] Harvested Cookies: {captured_cookies}")
             if captured_headers:
@@ -821,7 +860,6 @@ def run_analysis(args):
         for item in valid_credentials:
             for t in item.get('jwt_candidates', []):
                 audited_tokens.add(t)
-        # Also check if an explicit token was passed or check sessions.json
         if args.jwt_token:
             audited_tokens.add(args.jwt_token)
 
@@ -831,6 +869,13 @@ def run_analysis(args):
         else:
             print("\n" + "="*60 + "\n[*] Automated JWT Audit: No JWT tokens were captured in responses or specified.")
             print("="*60)
+
+    # Automated MFA Flow Auditing if enabled
+    if args.mfa_mode and args.mfa_url:
+        otp_codes = load_wordlist(args.otp_list)
+        if not otp_codes:
+            otp_codes = ["0000", "1234", "1111", "9999", "", "000000", "123456"]
+        audit_mfa_flow(session, args.mfa_url, args.otp_field, otp_codes, proxy_pool, args.proxy, base_headers, cookies)
 
     timing_vulns = []
     if args.timing_analysis:
@@ -843,7 +888,7 @@ def run_analysis(args):
     return valid_credentials, timing_vulns, length_outliers
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Advanced Security Analyzer with Automated JWT Auditing")
+    parser = argparse.ArgumentParser(description="Advanced Security Analyzer with MFA Flow Auditing")
     parser.add_argument("-u", "--url", required=True, help="Target URL")
     parser.add_argument("--auth-type", choices=["form", "basic", "digest"], default="form", help="Authentication type to test")
     parser.add_argument("--content-type", choices=["form", "json"], default="form", help="Payload content type for form/API auth")
@@ -855,6 +900,10 @@ if __name__ == "__main__":
     parser.add_argument("--jwt-audit", action="store_true", help="Enable automated JWT security audit and secret cracking")
     parser.add_argument("--jwt-token", help="Explicit JWT token string to audit")
     parser.add_argument("--jwt-secrets", default="passwords.txt", help="Wordlist for JWT HMAC secret cracking")
+    parser.add_argument("--mfa-mode", action="store_true", help="Enable MFA / OTP verification flow auditing")
+    parser.add_argument("--mfa-url", help="Target endpoint for secondary MFA/OTP verification")
+    parser.add_argument("--otp-field", default="otp_code", help="Form field name for the OTP/verification code")
+    parser.add_argument("--otp-list", default="passwords.txt", help="Wordlist file containing candidate OTP/PIN codes")
     parser.add_argument("--users", default="usernames.txt", help="Path to usernames wordlist")
     parser.add_argument("--passwords", default="passwords.txt", help="Path to passwords wordlist")
     parser.add_argument("--user-field", default="username", help="Payload field name for username")
