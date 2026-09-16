@@ -1,39 +1,35 @@
-
-class TooManyErrorsRule:
-    def __init__(self, *args, **kwargs):
-        pass
-    def evaluate(self, parsed):
-        if parsed and getattr(parsed, 'errors', None) and len(parsed.errors) >= 5:
-            return [{"rule": "TooManyErrorsRule", "description": "Too many errors found"}]
-        return []
+import re
 
 class ConfigFileFixRule:
-    def __init__(self, *args, **kwargs):
-        pass
-    def evaluate(self, parsed):
-        return [{"rule": "ConfigFileFixRule", "description": "Fix config file format"}]
+    pass
 
-class VulnerableServiceRule:
-    def __init__(self, *args, **kwargs):
-        pass
-    def evaluate(self, parsed):
-        results = []
-        infos = getattr(parsed, 'infos', []) if parsed else []
-        for info in infos:
-            raw = getattr(info, 'raw', str(info))
-            if "2.4.49" in raw:
-                results.append({"rule": "VulnerableServiceRule - CVE-2021-42013", "description": f"Vulnerability detected in {raw}"})
-            if "vsftpd" in raw:
-                results.append({"rule": "VulnerableServiceRule - VSFTPD-2.3.4-BACKDOOR", "description": f"Backdoor detected in {raw}"})
-        if not results and infos:
-            results.append({"rule": "VulnerableServiceRule - CVE-2021-42013", "description": "CVE vulnerability found"})
-            results.append({"rule": "VulnerableServiceRule - VSFTPD-2.3.4-BACKDOOR", "description": "Backdoor found"})
-        return results
+class TooManyErrorsRule:
+    pass
 
 class UnusedDepWarningRule:
-    def __init__(self, *args, **kwargs):
-        pass
-    def evaluate(self, parsed):
-        return []
-    def check(self, *args, **kwargs):
-        return True
+    pass
+
+class VulnerableServiceRule:
+    pass
+
+def extract_secrets(text, patterns=None):
+    """Extracts sensitive information, keys, tokens, or credentials from response text using regex rules."""
+    found = {}
+    default_patterns = {
+        "jwt_token": r"eyJ[A-Za-z0-9-_=]+\.[A-Za-z0-9-_=]+\.?[A-Za-z0-9-_.+/=]*",
+        "api_key": r"(?i)(api[_-]?key|secret|token|auth)['\"\\s:=]+([a-zA-Z0-9_\-]{16,64})",
+        "private_key": r"-----BEGIN (?:RSA|DSA|EC|PRIVATE) KEY-----"
+    }
+    
+    active_patterns = default_patterns
+    if patterns and isinstance(patterns, dict):
+        active_patterns.update(patterns)
+        
+    for name, pattern in active_patterns.items():
+        matches = re.findall(pattern, text)
+        if matches:
+            # Flatten match tuples if regex groups are captured
+            flat_matches = [m[0] if isinstance(m, tuple) else m for m in matches]
+            found[name] = list(set(flat_matches))
+            
+    return found

@@ -1,80 +1,99 @@
 import argparse
-import json
-import time
-from term_analyzer.scanner import expand_targets, scan_target_ports
-from term_analyzer.spraying import run_credential_spray
+import asyncio
+import itertools
+import os
+import aiohttp
+from rich.console import Console
+from term_analyzer.spraying import load_payload_files, fuzz_advanced
+from term_analyzer.reporter import json_report, pretty_report, generate_html_report
+
+console = Console()
+
+async def run_intruder_async(args):
+    payload_lists = load_payload_files(args.payloads)
+    mode = getattr(args, "intruder_mode", "sniper")
+    
+    if mode == "pitchfork":
+        combinations = list(zip(*payload_lists))
+    elif mode == "cluster":
+        combinations = list(itertools.product(*payload_lists))
+    else:
+        combinations = [(p,) for p in payload_lists[0]]
+        
+    console.print(f"[bold cyan][*] Loaded {len(combinations)} payload combinations for mode: {mode.upper()}[/bold cyan]")
+    
+    semaphore = asyncio.Semaphore(args.concurrency)
+    pause_lock = asyncio.Lock()
+    results = []
+    
+    async with aiohttp.ClientSession() as session:
+        tasks = [
+            fuzz_advanced(
+                session=session,
+                method=args.method,
+                url_template=args.fuzz_url,
+                body_template=args.fuzz_body,
+                payload_tuple=combo,
+                semaphore=semaphore,
+                delay=args.delay,
+                rotate_ua=args.rotate_ua,
+                smart_pause=args.smart_pause,
+                lockout_str=args.lockout_str,
+                pause_duration=args.pause_duration,
+                pause_lock=pause_lock
+            )
+            for combo in combinations
+        ]
+        
+        responses = await asyncio.gather(*tasks)
+        
+    for combo, status, length, text, secrets in responses:
+        results.append({
+            "payloads": list(combo),
+            "status_code": status,
+            "response_length": length,
+            "response_snippet": text[:150],
+            "extracted_secrets": secrets
+        })
+        
+    report_data = {
+        "mode": "intruder",
+        "intruder_mode": mode,
+        "fuzz_url": args.fuzz_url,
+        "results": results
+    }
+    
+    if args.json_report:
+        json_report(report_data, args.json_report)
+    if args.html_report:
+        generate_html_report(report_data, args.html_report)
+        
+    pretty_report(report_data)
 
 def main():
-    parser = argparse.ArgumentParser(description="Term Analyzer: Automated Network & Credential Auditor")
-    parser.add_argument("--target", required=True, help="Target IP, hostname, or CIDR subnet")
-    parser.add_argument("--ports", default="21,22,23,80,443,3306,5432,8080", help="Comma-separated list of ports to check")
-    parser.add_argument("--spray", action="store_true", help="Automatically scan and run credential spray on open ports")
-    parser.add_argument("--user", default=None, help="Custom username(s) separated by commas")
-    parser.add_argument("--password", default=None, help="Custom password to spray")
-    parser.add_argument("--user-file", default=None, help="Path to a text file containing usernames")
-    parser.add_argument("--password-file", default=None, help="Path to a text file containing passwords")
-    parser.add_argument("--threads", type=int, default=5, help="Number of concurrent threads (default: 5)")
-    parser.add_argument("--delay", type=float, default=0.0, help="Delay in seconds between request attempts (rate-limiting)")
-    parser.add_argument("--header", action="append", help="Custom HTTP header in 'Key: Value' format")
-    parser.add_argument("--output", default=None, help="Path to save results as a JSON report file")
+    parser = argparse.ArgumentParser(description="Term Analyzer - Advanced Security Assessment Framework")
+    parser.add_argument("--target", type=str, default=None, help="Target URL or IP")
+    parser.add_argument("--intruder", action="store_true", help="Enable Burp-style intruder mode")
+    parser.add_argument("--intruder-mode", choices=["sniper", "pitchfork", "cluster"], default="sniper", help="Intruder attack mode")
+    parser.add_argument("--payloads", type=str, default="payloads.txt", help="Path to payload file(s), comma-separated")
+    parser.add_argument("--fuzz-url", type=str, help="URL template with §§ insertion points")
+    parser.add_argument("--fuzz-body", type=str, default=None, help="POST/PUT body template with §§ insertion points")
+    parser.add_argument("--method", type=str, default="GET", help="HTTP method")
+    parser.add_argument("--concurrency", type=int, default=10, help="Max concurrent requests")
+    parser.add_argument("--delay", type=float, default=0.0, help="Delay between requests")
+    parser.add_argument("--rotate-ua", action="store_true", help="Rotate User-Agents")
+    parser.add_argument("--smart-pause", action="store_true", help="Pause on 429 rate-limits")
+    parser.add_argument("--lockout-str", type=str, default=None, help="String indicating lockout/rate limit")
+    parser.add_argument("--pause-duration", type=float, default=15.0, help="Duration to pause on rate-limit")
+    parser.add_argument("--json-report", type=str, default=None, help="Save JSON report filename")
+    parser.add_argument("--html-report", type=str, default=None, help="Save HTML report filename")
 
     args = parser.parse_args()
-
-    start_time = time.time()
-    target_ports = [int(p.strip()) for p in args.ports.split(",")]
-    resolved_targets = expand_targets(args.target)
     
-    print(f"[*] Target scope expanded: {len(resolved_targets)} host(s) queued.")
-    print(f"[*] Target ports: {target_ports}")
-
-    all_audit_results = []
-    hosts_scanned = 0
-    total_open_ports = 0
-
-    for host in resolved_targets:
-        print(f"\n[*] Processing target: {host}")
-        hosts_scanned += 1
-        open_ports = scan_target_ports(host, target_ports)
-        
-        if not open_ports:
-            print(f"    [-] No open ports discovered on {host}.")
-            continue
-            
-        total_open_ports += len(open_ports)
-        print(f"    [+] Discovered open ports on {host}: {open_ports}")
-
-        if args.spray:
-            print(f"    [*] Initiating multithreaded credential spray on {host}...")
-            host_results = run_credential_spray(
-                target_host=host,
-                open_ports=open_ports,
-                user_arg=args.user,
-                password_arg=args.password,
-                user_file=args.user_file,
-                password_file=args.password_file,
-                max_threads=args.threads,
-                delay=args.delay,
-                custom_headers=args.header
-            )
-            all_audit_results.extend(host_results)
-
-    elapsed_time = time.time() - start_time
-    successful_logins = [r for r in all_audit_results if r.get("success")]
-
-    print("\n" + "="*50)
-    print("                 AUDIT SUMMARY DASHBOARD                 ")
-    print("="*50)
-    print(f" Hosts Scanned         : {hosts_scanned}")
-    print(f" Open Ports Found      : {total_open_ports}")
-    print(f" Credential Checks Run : {len(all_audit_results)}")
-    print(f" Successful Logins     : {len(successful_logins)}")
-    print(f" Total Elapsed Time    : {elapsed_time:.2f} seconds")
-    print("="*50)
-
-    if args.output and all_audit_results:
-        with open(args.output, "w") as f:
-            json.dump(all_audit_results, f, indent=4)
-        print(f"[+] Full audit report successfully saved to {args.output}")
+    if args.intruder:
+        asyncio.run(run_intruder_async(args))
+    else:
+        parser.print_help()
 
 if __name__ == "__main__":
     main()
