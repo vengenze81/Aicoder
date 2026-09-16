@@ -3,6 +3,7 @@ import argparse
 import logging
 import sys
 from tester import PortTester, discover_local_interfaces
+from term_analyzer.db import DatabaseManager
 
 logging.basicConfig(
     level=logging.INFO,
@@ -16,6 +17,9 @@ async def perform_scan_async(target: str, ports_str: str, fuzz: bool = False, au
     except ValueError:
         logger.error("Invalid ports format. Please use comma-separated integers (e.g. 80,443,8080).")
         return
+
+    db = DatabaseManager()
+    prev_scan = db.get_previous_scan(target)
 
     logger.info(f"Starting concurrent async reconnaissance scan on {target} across ports: {ports}")
     tester = PortTester(target)
@@ -52,7 +56,6 @@ async def perform_scan_async(target: str, ports_str: str, fuzz: bool = False, au
     if fuzz:
         web_ports = [p["port"] for p in open_ports if p["port"] in {80, 443, 8080, 8443, 8000, 5000, 9090}]
         if not web_ports:
-            # Fallback to check open ports anyway if standard web ports weren't explicitly in the map
             web_ports = [p["port"] for p in open_ports]
 
         default_paths = ["admin", "login", "api", "dashboard", "config", "status", "test", "v1", "backup", "index"]
@@ -91,6 +94,39 @@ async def perform_scan_async(target: str, ports_str: str, fuzz: bool = False, au
                     spray_results.append(res)
             else:
                 logger.info(f"[-] No valid credentials found on {base_url} with password {spray_pass}")
+
+    # Perform Delta Diffing against previous scan
+    if prev_scan:
+        print("\n╭───────────────── Attack Surface Drift (Delta Diff) ─────────────────╮")
+        print(f"│ Comparing against previous scan from: {prev_scan['timestamp'][:19]} │")
+        
+        old_open_ports = {p['port'] for p in prev_scan['ports'] if p['status'] == 'open'}
+        curr_open_ports = {p['port'] for p in scan_results_data if p['status'] == 'open'}
+        
+        new_ports = curr_open_ports - old_open_ports
+        closed_ports = old_open_ports - curr_open_ports
+        
+        if new_ports:
+            print(f"│ 🟢 NEW OPEN PORTS: {list(new_ports)}                                     │")
+        if closed_ports:
+            print(f"│ 🔴 RECENTLY CLOSED PORTS: {list(closed_ports)}                            │")
+            
+        old_urls = {h['url'] for h in prev_scan['fuzz_hits']}
+        curr_urls = {h['url'] for h in fuzz_results}
+        new_urls = curr_urls - old_urls
+        
+        if new_urls:
+            print(f"│ 🚀 NEW ENDPOINTS DISCOVERED:                                        │")
+            for u in new_urls:
+                print(f"│   - {u:<63} │")
+        
+        if not new_ports and not closed_ports and not new_urls:
+            print("│ ✨ No changes detected since last scan. Attack surface is stable.     │")
+        print("╰─────────────────────────────────────────────────────────────────────╯")
+
+    # Save current scan to history database
+    db.save_scan(target, scan_results_data, fuzz_results)
+    logger.info("[*] Scan results successfully archived to historical database (analyzer_history.db).")
 
     print("╭─────────────────── Scan Results ───────────────────╮")
     if audit and any(d["audit"].startswith("VULNERABLE") for d in scan_results_data):

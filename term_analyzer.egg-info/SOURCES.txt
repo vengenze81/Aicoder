@@ -3,6 +3,7 @@ pyproject.toml
 tester.py
 term_analyzer/__init__.py
 term_analyzer/cli.py
+term_analyzer/db.py
 term_analyzer/parser.py
 term_analyzer/reporter.py
 term_analyzer/rules.py
