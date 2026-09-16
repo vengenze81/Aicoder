@@ -11,7 +11,7 @@ import time
 import random
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 # Suppress insecure request warnings if testing self-signed certs
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -106,7 +106,7 @@ def parse_cookies(cookie_arg):
     return cookies
 
 def test_form_auth(session, target_url, username, password, user_field, pass_field, failure_keyword, success_regex, proxy_pool, single_proxy, base_headers, cookies, delay=0, lockout_keyword=None, verbose=False):
-    """Tests HTML Form-Based Authentication with timing tracking and regex success matching."""
+    """Tests HTML Form-Based Authentication with timing tracking and response size metrics."""
     headers = base_headers.copy()
     if "Content-Type" not in headers:
         headers["Content-Type"] = "application/x-www-form-urlencoded"
@@ -148,6 +148,7 @@ def test_form_auth(session, target_url, username, password, user_field, pass_fie
             verify=False
         )
         elapsed = time.time() - start_time
+        resp_length = len(resp.content)
 
         if check_lockout(resp.text, resp.status_code, lockout_keyword):
             print(f"[!] [LOCKOUT/WAF WARNING] Account lockout or rate-limit triggered for user '{username}' at {target_url} (Status: {resp.status_code})")
@@ -170,13 +171,14 @@ def test_form_auth(session, target_url, username, password, user_field, pass_fie
             "type": "form",
             "status_code": resp.status_code,
             "response_time": elapsed,
+            "response_length": resp_length,
             "success": is_success
         }
 
         if is_success:
             print(f"\n[+] [SUCCESS] Valid login found -> {username}:{password} at {target_url}\n")
         elif verbose:
-            print(f"[-] Failed form login {username}:{password} at {target_url} (Status: {resp.status_code}, Time: {elapsed:.3f}s)")
+            print(f"[-] Failed form login {username}:{password} at {target_url} (Status: {resp.status_code}, Length: {resp_length}B, Time: {elapsed:.3f}s)")
 
         return result
 
@@ -191,13 +193,12 @@ def analyze_timing_leak(all_results):
     """Analyzes response times per username to detect timing-based user enumeration vulnerabilities."""
     user_times = defaultdict(list)
     for res in all_results:
-        if res and not res.get('success'):  # Analyze failed attempts to find user discrimination
+        if res and not res.get('success'):
             user_times[res['username']].append(res['response_time'])
 
     if len(user_times) < 2:
         return []
 
-    # Calculate average response time per username
     averages = {user: sum(times)/len(times) for user, times in user_times.items() if times}
     if not averages:
         return []
@@ -218,15 +219,46 @@ def analyze_timing_leak(all_results):
 
     if vulnerabilities:
         print("\n[!] [POTENTIAL VULNERABILITY] Significant timing variance detected!")
-        print("    The application may be vulnerable to user enumeration via side-channel timing attacks.")
     else:
         print("    [+] No significant timing anomalies detected across usernames.")
     print("="*60)
     
     return vulnerabilities
 
-def export_html_report(findings, timing_vulns, report_path, metadata):
-    """Generates a professional, styled HTML security report including timing analysis."""
+def analyze_length_outliers(all_results):
+    """Clusters response lengths to detect structural outliers or hidden states."""
+    lengths = [res['response_length'] for res in all_results if res and not res.get('success')]
+    if not lengths:
+        return []
+
+    length_counts = Counter(lengths)
+    baseline_length, baseline_count = length_counts.most_common(1)[0]
+    
+    outliers = []
+    print("\n" + "="*60 + "\n[*] Response Length Clustering & Outlier Analysis:")
+    print(f"    - Baseline Failure Length: {baseline_length} bytes ({baseline_count} occurrences)")
+
+    for res in all_results:
+        if res and not res.get('success'):
+            l = res['response_length']
+            if l != baseline_length:
+                diff = abs(l - baseline_length)
+                print(f"    [!] Outlier detected -> User: {res['username']}, Password: {res['password']} | Length: {l}B (Diff: {diff:+d}B)")
+                outliers.append({
+                    "username": res['username'],
+                    "password": res['password'],
+                    "length": l,
+                    "baseline_diff": diff,
+                    "status_code": res['status_code']
+                })
+
+    if not outliers:
+        print("    [+] All failed responses conform to uniform length baseline.")
+    print("="*60)
+    return outliers
+
+def export_html_report(findings, timing_vulns, length_outliers, report_path, metadata):
+    """Generates a professional, styled HTML security report including timing and length anomaly sections."""
     rows_html = ""
     for item in findings:
         rows_html += f"""
@@ -257,6 +289,26 @@ def export_html_report(findings, timing_vulns, report_path, metadata):
             </thead>
             <tbody>
                 {timing_rows}
+            </tbody>
+        </table>
+        """
+
+    outliers_html = ""
+    if length_outliers:
+        outlier_rows = "".join([f"<tr><td><code>{o['username']}</code></td><td><code>{o['password']}</code></td><td>{o['length']} bytes</td><td style='color: #38bdf8;'>{o['baseline_diff']:+d} bytes</td></tr>" for o in length_outliers])
+        outliers_html = f"""
+        <h2 style="margin-top: 40px; color: #38bdf8;">📊 Response Length Outliers & Anomalies</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Username</th>
+                    <th>Password Tested</th>
+                    <th>Response Length</th>
+                    <th>Baseline Difference</th>
+                </tr>
+            </thead>
+            <tbody>
+                {outlier_rows}
             </tbody>
         </table>
         """
@@ -324,6 +376,7 @@ def export_html_report(findings, timing_vulns, report_path, metadata):
             border-radius: 8px;
             overflow: hidden;
             border: 1px solid var(--border-color);
+            margin-bottom: 20px;
         }
         th, td {
             padding: 14px 16px;
@@ -409,6 +462,7 @@ def export_html_report(findings, timing_vulns, report_path, metadata):
         </table>
 
         __TIMING_HTML__
+        __OUTLIERS_HTML__
     </div>
 </body>
 </html>
@@ -422,6 +476,7 @@ def export_html_report(findings, timing_vulns, report_path, metadata):
         .replace("__TOTAL_FINDINGS__", str(len(findings)))
         .replace("__ROWS_HTML__", rows_html)
         .replace("__TIMING_HTML__", timing_html)
+        .replace("__OUTLIERS_HTML__", outliers_html)
     )
 
     with open(report_path, 'w', encoding='utf-8') as f:
@@ -479,10 +534,14 @@ def run_analysis(args):
     if args.timing_analysis:
         timing_vulns = analyze_timing_leak(all_results)
 
-    return valid_credentials, timing_vulns
+    length_outliers = []
+    if args.detect_length_outliers:
+        length_outliers = analyze_length_outliers(all_results)
+
+    return valid_credentials, timing_vulns, length_outliers
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Advanced Security Analyzer with Timing Analysis")
+    parser = argparse.ArgumentParser(description="Advanced Security Analyzer with Length Clustering & Timing Analysis")
     parser.add_argument("-u", "--url", required=True, help="Target URL")
     parser.add_argument("--auth-type", choices=["form"], default="form", help="Authentication type to test")
     parser.add_argument("--users", default="usernames.txt", help="Path to usernames wordlist")
@@ -496,6 +555,7 @@ if __name__ == "__main__":
     parser.add_argument("--cookie", help="Custom cookies string")
     parser.add_argument("--delay", type=float, default=0.0, help="Base delay in seconds")
     parser.add_argument("--timing-analysis", action="store_true", help="Enable side-channel timing-based user enumeration analysis")
+    parser.add_argument("--detect-length-outliers", action="store_true", help="Enable response length clustering to detect structural anomalies")
     parser.add_argument("-t", "--threads", type=int, default=10, help="Number of concurrent threads")
     parser.add_argument("--proxy", help="Route traffic through static proxy")
     parser.add_argument("--proxy-file", help="Path to proxy list file")
@@ -508,7 +568,7 @@ if __name__ == "__main__":
     print(f"[*] Starting Auth analysis on: {args.url}")
     start_time = datetime.now()
     
-    found, timing_vulns = run_analysis(args)
+    found, timing_vulns, length_outliers = run_analysis(args)
 
     duration = datetime.now() - start_time
     duration_str = f"{duration.total_seconds():.2f}s"
@@ -525,4 +585,4 @@ if __name__ == "__main__":
             "auth_type": args.auth_type,
             "duration": duration_str
         }
-        export_html_report(found, timing_vulns, args.report, metadata)
+        export_html_report(found, timing_vulns, length_outliers, args.report, metadata)
