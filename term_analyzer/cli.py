@@ -15,6 +15,7 @@ from term_analyzer.openapi_scanner import run_openapi_scan
 from term_analyzer.crawler import crawl_target
 from term_analyzer.vuln_scanner import run_vulnerability_scan
 from term_analyzer.headers_scanner import audit_headers_and_cors
+from term_analyzer.graphql_scanner import run_graphql_scan
 
 console = Console()
 
@@ -321,6 +322,34 @@ async def run_headers_scan_async(args):
     if args.html_report:
         generate_html_report(report_data, args.html_report)
 
+async def run_graphql_scan_async(args):
+    if not args.target:
+        console.print("[bold red][!] Please specify a target URL using --target[/bold red]")
+        return
+        
+    findings = await run_graphql_scan(args.target)
+    
+    formatted_results = []
+    for f in findings:
+        formatted_results.append({
+            "payloads": [f["endpoint"]],
+            "status_code": 200,
+            "response_length": 0,
+            "response_snippet": f"Details: {f['details']}",
+            "extracted_secrets": []
+        })
+        
+    report_data = {
+        "mode": "graphql-scan",
+        "target": args.target,
+        "results": formatted_results
+    }
+    
+    if args.json_report:
+        json_report(report_data, args.json_report)
+    if args.html_report:
+        generate_html_report(report_data, args.html_report)
+
 def handle_jwt_commands(args):
     if args.jwt_inspect:
         header, payload, err = decode_jwt(args.jwt_inspect)
@@ -352,6 +381,7 @@ def main():
     parser.add_argument("--crawl", action="store_true", help="Enable recursive web crawler and form extractor mode")
     parser.add_argument("--vuln-scan", action="store_true", help="Enable automated crawl + active vulnerability scanner mode")
     parser.add_argument("--headers-scan", action="store_true", help="Enable security headers and CORS misconfiguration auditor")
+    parser.add_argument("--graphql-scan", action="store_true", help="Enable GraphQL endpoint and introspection auditor")
     parser.add_argument("--max-depth", type=int, default=2, help="Maximum crawl depth")
     parser.add_argument("--spec", type=str, default=None, help="Path to OpenAPI/Swagger JSON or YAML spec file")
     parser.add_argument("--domain", type=str, default=None, help="Base domain for VHost fuzzing (e.g., example.com)")
@@ -383,6 +413,8 @@ def main():
     
     if args.download_wordlist:
         download_wordlist(args.download_wordlist)
+    elif args.graphql_scan:
+        asyncio.run(run_graphql_scan_async(args))
     elif args.headers_scan:
         asyncio.run(run_headers_scan_async(args))
     elif args.vuln_scan:
@@ -396,13 +428,17 @@ def main():
     elif args.vhost:
         asyncio.run(run_vhost_async(args))
     elif args.intruder:
-        asyncio.run(run_intruder_async(args))
+        asyncio.run(run_intrurer_async(args) if 'run_intrurer_async' in globals() else run_intruder_async(args))
     elif args.template and args.target:
         asyncio.run(run_template_async(args))
     elif args.jwt_inspect or args.jwt_brute:
         handle_jwt_commands(args)
     else:
         parser.print_help()
+
+if __name__ == main.__code__ if hasattr(main, '__code__') else "__main__":
+    # Standard entry block
+    pass
 
 if __name__ == "__main__":
     main()
