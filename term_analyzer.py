@@ -65,6 +65,31 @@ def load_wordlist(filepath):
     with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
         return [line.strip() for line in f if line.strip() and not line.startswith('#')]
 
+def mutate_passwords(passwords):
+    """Applies smart password mutation rules (capitalization, years, leetspeak, symbols)."""
+    mutated = set(passwords)
+    suffixes = ["2025", "2026", "2027", "123", "1234", "!", "@", "#", "!@#"]
+    
+    for pwd in passwords:
+        # 1. Capitalization variations
+        mutated.add(pwd.capitalize())
+        mutated.add(pwd.upper())
+        mutated.add(pwd.lower())
+        
+        # 2. Append year / symbol suffixes
+        for s in suffixes:
+            mutated.add(f"{pwd}{s}")
+            mutated.add(f"{pwd.capitalize()}{s}")
+            
+        # 3. Leetspeak substitutions
+        leet = pwd.replace('e', '3').replace('a', '@').replace('s', '$').replace('o', '0')
+        mutated.add(leet)
+        mutated.add(leet.capitalize())
+        for s in suffixes:
+            mutated.add(f"{leet}{s}")
+            
+    return list(mutated)
+
 def apply_jitter(delay):
     """Applies a random jitter delay to mimic human behavior and evade WAF throttling."""
     if delay > 0:
@@ -212,7 +237,6 @@ def run_user_enumeration(session, target_url, usernames, auth_type, content_type
         print("="*60)
         return []
 
-    # Cluster response lengths and texts to find anomalies (potential valid users)
     lengths = [r['response_length'] for r in results]
     length_counts = Counter(lengths)
     baseline_length, baseline_count = length_counts.most_common(1)[0]
@@ -222,7 +246,6 @@ def run_user_enumeration(session, target_url, usernames, auth_type, content_type
 
     for r in results:
         l = r['response_length']
-        # If length differs from statistical baseline or status code differs
         if l != baseline_length:
             diff = abs(l - baseline_length)
             print(f"    [+] [POTENTIAL VALID USER] '{r['username']}' -> Length: {l}B (Diff: {diff:+d}B, Status: {r['status_code']})")
@@ -649,6 +672,11 @@ def run_analysis(args):
     if not passwords:
         passwords = ["password", "123456", "admin"]
 
+    if args.mutate:
+        original_count = len(passwords)
+        passwords = mutate_passwords(passwords)
+        print(f"[*] Password Mutation Enabled: Expanded wordlist from {original_count} to {len(passwords)} candidates.")
+
     proxy_pool = ProxyPool(args.proxy_file) if args.proxy_file else None
     base_headers = parse_custom_headers(args.header)
     cookies = parse_cookies(args.cookie)
@@ -659,7 +687,6 @@ def run_analysis(args):
     print(f"[*] Loaded {len(usernames)} username(s) and {len(passwords)} password(s).")
     print(f"[*] Auth Type: {args.auth_type.upper()} | Content-Type: {args.content_type.upper()}")
 
-    # Run dedicated user enumeration phase if requested
     if args.enum_users:
         run_user_enumeration(
             session, args.url, usernames, args.auth_type, args.content_type,
@@ -717,7 +744,7 @@ def run_analysis(args):
     return valid_credentials, timing_vulns, length_outliers
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Advanced Security Analyzer with User Enumeration Mode")
+    parser = argparse.ArgumentParser(description="Advanced Security Analyzer with Smart Password Mutation")
     parser.add_argument("-u", "--url", required=True, help="Target URL")
     parser.add_argument("--auth-type", choices=["form", "basic", "digest"], default="form", help="Authentication type to test")
     parser.add_argument("--content-type", choices=["form", "json"], default="form", help="Payload content type for form/API auth")
@@ -725,6 +752,7 @@ if __name__ == "__main__":
     parser.add_argument("--csrf-field", default="csrf_token", help="Name of the form/JSON field for CSRF token")
     parser.add_argument("--enum-users", action="store_true", help="Enable dedicated account enumeration mode")
     parser.add_argument("--probe-password", default="invalidprobe12345!", help="Dummy password used during user enumeration probe")
+    parser.add_argument("--mutate", action="store_true", help="Enable smart password mutation & rule engine")
     parser.add_argument("--users", default="usernames.txt", help="Path to usernames wordlist")
     parser.add_argument("--passwords", default="passwords.txt", help="Path to passwords wordlist")
     parser.add_argument("--user-field", default="username", help="Payload field name for username")
