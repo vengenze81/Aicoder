@@ -1,0 +1,22 @@
+Metadata-Version: 2.4
+Name: term-analyzer
+Version: 0.1.0
+Summary: Active network reconnaissance and log analysis engine for Termux/Android
+Classifier: Programming Language :: Python :: 3
+Classifier: Operating System :: Android
+Classifier: Environment :: Console
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: rich>=10.0.0
+
+# term-analyzer
+
+A high-performance network reconnaissance and log analysis engine built for Termux.
+
+## Installation
+
+    pip install -e .
+
+## Usage
+
+    term-analyzer --scan 127.0.0.1 --ports 21,22,80,443,8080

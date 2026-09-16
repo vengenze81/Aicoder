@@ -1,0 +1,2 @@
+[console_scripts]
+term-analyzer = term_analyzer.cli:main

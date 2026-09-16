@@ -1,0 +1,15 @@
+README.md
+pyproject.toml
+tester.py
+term_analyzer/__init__.py
+term_analyzer/cli.py
+term_analyzer/parser.py
+term_analyzer/reporter.py
+term_analyzer/rules.py
+term_analyzer.egg-info/PKG-INFO
+term_analyzer.egg-info/SOURCES.txt
+term_analyzer.egg-info/dependency_links.txt
+term_analyzer.egg-info/entry_points.txt
+term_analyzer.egg-info/requires.txt
+term_analyzer.egg-info/top_level.txt
+tests/test_term_analyzer.py

@@ -46,5 +46,69 @@
     "severity": "medium",
     "message": "End-of-life or legacy MySQL version detected.",
     "action": "Upgrade MySQL to version 8.0 or higher."
+  },
+  {
+    "id": "DOCKER-API-EXPOSED",
+    "service": "Docker",
+    "pattern": "Docker/.*API",
+    "severity": "high",
+    "message": "Unauthenticated or exposed Docker Remote API detected.",
+    "action": "Restrict Docker socket access and protect port 2375/2376 with TLS or authentication."
+  },
+  {
+    "id": "ELASTICSEARCH-UNAUTH",
+    "service": "Elasticsearch",
+    "pattern": "cluster_name.*lucene_version",
+    "severity": "high",
+    "message": "Unprotected Elasticsearch instance exposed to reconnaissance.",
+    "action": "Enable X-Pack security, require authentication, and bind to localhost/internal networks only."
+  },
+  {
+    "id": "TELNET-CLEARTEXT",
+    "service": "Telnet",
+    "pattern": "login:|Password:",
+    "severity": "high",
+    "message": "Insecure cleartext Telnet service active.",
+    "action": "Disable Telnet immediately and migrate entirely to SSH."
+  },
+  {
+    "id": "REDIS-UNAUTH",
+    "service": "Redis",
+    "pattern": "redis_version",
+    "severity": "high",
+    "message": "Unauthenticated Redis caching service exposed to the network.",
+    "action": "Enable requirepass configuration, bind to localhost, and disable dangerous commands."
+  },
+  {
+    "id": "JENKINS-EXPOSED",
+    "service": "Jenkins",
+    "pattern": "X-Jenkins:|Jenkins CI",
+    "severity": "medium",
+    "message": "Exposed Jenkins automation server detected.",
+    "action": "Place behind a reverse proxy with strict authentication and disable anonymous read access."
+  },
+  {
+    "id": "TOMCAT-MANAGER",
+    "service": "Apache Tomcat",
+    "pattern": "Apache Tomcat.*Manager",
+    "severity": "high",
+    "message": "Apache Tomcat Manager application accessible.",
+    "action": "Restrict manager app access to trusted IP ranges and enforce strong credentials."
+  },
+  {
+    "id": "VSFTPD-BACKDOOR",
+    "service": "vsftpd",
+    "pattern": "vsFTPd 2.3.4",
+    "severity": "critical",
+    "message": "Potentially vulnerable vsFTPd 2.3.4 backdoor signature detected.",
+    "action": "Upgrade FTP server software immediately to a patched, secure version."
+  },
+  {
+    "id": "KUBELET-EXPOSED",
+    "service": "Kubernetes",
+    "pattern": "kubelet|pods",
+    "severity": "high",
+    "message": "Exposed Kubernetes Kubelet node API endpoint detected.",
+    "action": "Secure Kubelet port 10250 with mutual TLS and Webhook token authentication."
   }
 ]

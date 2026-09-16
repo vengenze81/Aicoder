@@ -1,0 +1,3 @@
+info: Discovered open port 6379 with banner: redis_version:7.0.11
+info: Discovered open port 8080 with banner: HTTP/1.1 200 OK
+X-Jenkins: 2.387.3

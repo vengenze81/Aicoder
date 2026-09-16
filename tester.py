@@ -96,3 +96,40 @@ class PortTester:
         if match:
             return f"{match.group(1)} {match.group(2)}"
         return None
+
+    async def scan_subnet(self, subnet_str: str, ports: list[int]) -> list[ServiceInfo]:
+        """Concurrently scan an entire CIDR subnet across specified ports."""
+        import ipaddress
+        try:
+            network = ipaddress.ip_network(subnet_str, strict=False)
+            hosts = [str(ip) for ip in network.hosts()]
+            if not hosts:
+                hosts = [str(network.network_address)]
+        except ValueError:
+            hosts = [subnet_str]
+
+        tasks = []
+        for host in hosts:
+            for port in ports:
+                sub_tester = PortTester(target=host, timeout=self.timeout)
+                tasks.append(sub_tester.agrab_banner(port))
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        valid_services = [res for res in results if isinstance(res, ServiceInfo) and res.status == "open"]
+        return valid_services
+
+def discover_local_interfaces() -> list[str]:
+    """Identify active local IP addresses and local subnet ranges for internal pivoting."""
+    import socket
+    local_ips = []
+    try:
+        hostname = socket.gethostname()
+        local_ips.append(socket.gethostbyname(hostname))
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        local_ips.append(s.getsockname()[0])
+        s.close()
+    except Exception:
+        pass
+    return list(set(local_ips))
+

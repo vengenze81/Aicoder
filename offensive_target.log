@@ -1,0 +1,2 @@
+info: Discovered open port 2380 with banner: Docker/24.0.5 API version 1.43
+info: Discovered open port 9200 with banner: {"cluster_name":"prod-cluster","lucene_version":"9.5.0"}

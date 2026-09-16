@@ -40,7 +40,25 @@ def build_rule_set(args: argparse.Namespace) -> List:
     return rules
 
 async def perform_scan_async(target: str, ports_str: str) -> ParsedLog:
-    """Actively and concurrently scan target ports using asyncio."""
+    """Actively and concurrently scan a target IP, CIDR subnet, or local interface using asyncio."""
+    if not PortTester:
+        raise RuntimeError("PortTester module (`tester.py`) could not be imported.")
+
+    # Handle automatic local network discovery
+    if target.lower() == "local":
+        from tester import discover_local_interfaces
+        interfaces = discover_local_interfaces()
+        non_loopback = [ip for ip in interfaces if not ip.startswith("127.")]
+        if non_loopback:
+            base_ip = non_loopback[0]
+            parts = base_ip.split(".")
+            if len(parts) == 4:
+                target = f"{parts[0]}.{parts[1]}.{parts[2]}.0/24"
+            else:
+                target = base_ip
+        else:
+            target = "127.0.0.1"
+        print(f"[*] Auto-resolved local scan target to: {target}")
     if not PortTester:
         raise RuntimeError("PortTester module (`tester.py`) could not be imported.")
     
@@ -50,7 +68,7 @@ async def perform_scan_async(target: str, ports_str: str) -> ParsedLog:
     tester = PortTester(target)
     log.info("Starting concurrent async reconnaissance scan on %s across ports: %s", target, ports)
     
-    services = await tester.scan_ports(ports)
+    services = await tester.scan_subnet(target, ports)
     
     for service in services:
         if service.status == "open":
