@@ -3,16 +3,19 @@ import re
 from dataclasses import dataclass, field
 from typing import Iterable, List, Pattern
 
+
 @dataclass(slots=True)
 class LogEntry:
     raw: str
     kind: str
     message: str = field(init=False)
+
     def __post_init__(self) -> None:
         self.message = self.raw
         prefix = self.kind.upper() + ":"
         if self.raw.startswith(prefix):
             self.message = self.raw[len(prefix) :].lstrip()
+
 
 @dataclass(slots=True)
 class ParsedLog:
@@ -23,6 +26,7 @@ class ParsedLog:
 
     def all_entries(self) -> List[LogEntry]:
         return self.errors + self.warnings + self.infos + self.others
+
 
 class LogParser:
     _PATTERNS: List[tuple[Pattern[str], str]] = [
