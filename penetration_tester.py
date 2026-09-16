@@ -4,8 +4,10 @@ Advanced Recon Module – lightweight, thread-based port scanner.
 """
 
 from __future__ import annotations
+from tqdm import tqdm
 
 import argparse
+import csv
 import json
 import logging
 import socket
@@ -159,7 +161,7 @@ class PenetrationTester:
                 executor.submit(self.scan_port, p): p for p in self.ports
             }
 
-            for future in as_completed(future_to_port):
+            for future in tqdm(as_completed(future_to_port), total=len(self.ports), desc="Scanning"):
                 if deadline is not None and time.time() > deadline:
                     LOG.warning("Global scan deadline reached – aborting remaining jobs")
                     break
@@ -180,6 +182,19 @@ class PenetrationTester:
             elapsed,
             len(self.report["open_services"]),
         )
+
+    def export_csv(self, filename: Path) -> None:
+        try:
+            filename.parent.mkdir(parents=True, exist_ok=True)
+            with filename.open("w", newline="", encoding="utf-8") as fp:
+                writer = csv.writer(fp)
+                writer.writerow(["Port", "Status", "Banner"])
+                for service in self.report["open_services"]:
+                    writer.writerow([service["port"], service["status"], service["banner"]])
+            LOG.info("CSV Report written to %s", filename)
+        except OSError as exc:
+            LOG.error("Failed to write CSV report: %s", exc)
+            raise
 
     def export_report(self, filename: Path) -> None:
         try:
@@ -268,7 +283,10 @@ def main() -> None:
         tester.run_recon()
 
         if args.output:
-            tester.export_report(args.output)
+            if args.output.suffix.lower() == ".csv":
+                tester.export_csv(args.output)
+            else:
+                tester.export_report(args.output)
         else:
             print(json.dumps(tester.report, indent=4))
 
