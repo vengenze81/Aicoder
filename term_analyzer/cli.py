@@ -11,6 +11,7 @@ from term_analyzer.templates import run_template_scan
 from term_analyzer.jwt_utils import decode_jwt, brute_force_jwt, download_wordlist
 from term_analyzer.vhost import run_vhost_scan
 from term_analyzer.dir_scanner import run_dir_scan
+from term_analyzer.openapi_scanner import run_openapi_scan
 
 console = Console()
 
@@ -104,7 +105,6 @@ async def run_intruder_async(args):
     pretty_report(report_data)
 
 async def run_template_async(args):
-    custom_headers = parse_key_value_pairs(args.header, ":")
     results = await run_template_scan(args.target, args.template, args.concurrency, proxy=args.proxy)
     
     formatted_results = []
@@ -196,6 +196,34 @@ async def run_dir_scan_async(args):
     if args.html_report:
         generate_html_report(report_data, args.html_report)
 
+async def run_openapi_async(args):
+    if not args.target or not args.spec:
+        console.print("[bold red][!] Please specify both --target and --spec <file.json/yaml>[/bold red]")
+        return
+        
+    custom_headers = parse_key_value_pairs(args.header, ":")
+    custom_cookies = parse_key_value_pairs(args.cookie, "=")
+    
+    results = await run_openapi_scan(
+        base_url=args.target,
+        spec_path=args.spec,
+        custom_headers=custom_headers,
+        custom_cookies=custom_cookies,
+        concurrency=args.concurrency
+    )
+    
+    report_data = {
+        "mode": "openapi-scan",
+        "target": args.target,
+        "spec": args.spec,
+        "results": results
+    }
+    
+    if args.json_report:
+        json_report(report_data, args.json_report)
+    if args.html_report:
+        generate_html_report(report_data, args.html_report)
+
 def handle_jwt_commands(args):
     if args.jwt_inspect:
         header, payload, err = decode_jwt(args.jwt_inspect)
@@ -223,6 +251,8 @@ def main():
     parser.add_argument("--intruder", action="store_true", help="Enable Burp-style intruder mode")
     parser.add_argument("--vhost", action="store_true", help="Enable Virtual Host / Host header fuzzing mode")
     parser.add_argument("--dir-scan", action="store_true", help="Enable directory and file brute-forcing mode")
+    parser.add_argument("--openapi", action="store_true", help="Enable OpenAPI / Swagger schema-driven scan mode")
+    parser.add_argument("--spec", type=str, default=None, help="Path to OpenAPI/Swagger JSON or YAML spec file")
     parser.add_argument("--domain", type=str, default=None, help="Base domain for VHost fuzzing (e.g., example.com)")
     parser.add_argument("--intruder-mode", choices=["sniper", "pitchfork", "cluster"], default="sniper", help="Intruder attack mode")
     parser.add_argument("--payloads", type=str, default="payloads.txt", help="Path to payload file(s), comma-separated")
@@ -252,6 +282,8 @@ def main():
     
     if args.download_wordlist:
         download_wordlist(args.download_wordlist)
+    elif args.openapi:
+        asyncio.run(run_openapi_async(args))
     elif args.dir_scan:
         asyncio.run(run_dir_scan_async(args))
     elif args.vhost:
