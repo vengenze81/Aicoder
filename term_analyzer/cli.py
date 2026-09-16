@@ -14,6 +14,16 @@ from term_analyzer.dir_scanner import run_dir_scan
 
 console = Console()
 
+def parse_key_value_pairs(kv_list, delimiter):
+    parsed_dict = {}
+    if not kv_list:
+        return parsed_dict
+    for item in kv_list:
+        if delimiter in item:
+            k, v = item.split(delimiter, 1)
+            parsed_dict[k.strip()] = v.strip()
+    return parsed_dict
+
 async def run_intruder_async(args):
     payload_lists = load_payload_files(args.payloads)
     mode = getattr(args, "intruder_mode", "sniper")
@@ -29,6 +39,9 @@ async def run_intruder_async(args):
     
     exclude_statuses = {int(s.strip()) for s in args.exclude_status.split(",")} if args.exclude_status else set()
     exclude_lengths = {int(l.strip()) for l in args.exclude_length.split(",")} if args.exclude_length else set()
+    
+    custom_headers = parse_key_value_pairs(args.header, ":")
+    custom_cookies = parse_key_value_pairs(args.cookie, "=")
     
     semaphore = asyncio.Semaphore(args.concurrency)
     pause_lock = asyncio.Lock()
@@ -51,7 +64,9 @@ async def run_intruder_async(args):
                 smart_pause=args.smart_pause,
                 lockout_str=args.lockout_str,
                 pause_duration=args.pause_duration,
-                pause_lock=pause_lock
+                pause_lock=pause_lock,
+                custom_headers=custom_headers,
+                custom_cookies=custom_cookies
             )
             for combo in combinations
         ]
@@ -89,6 +104,7 @@ async def run_intruder_async(args):
     pretty_report(report_data)
 
 async def run_template_async(args):
+    custom_headers = parse_key_value_pairs(args.header, ":")
     results = await run_template_scan(args.target, args.template, args.concurrency, proxy=args.proxy)
     
     formatted_results = []
@@ -102,7 +118,8 @@ async def run_template_async(args):
             "payloads": [r["url"]],
             "status_code": r["status_code"],
             "response_length": len(r["response_snippet"]),
-            "response_snippet": r["response_snippet"]
+            "response_snippet": r["response_snippet"],
+            "extracted_secrets": []
         })
         
     report_data = {
@@ -154,13 +171,18 @@ async def run_dir_scan_async(args):
     exclude_statuses = {int(s.strip()) for s in args.exclude_status.split(",")} if args.exclude_status else {404}
     exclude_lengths = {int(l.strip()) for l in args.exclude_length.split(",")} if args.exclude_length else set()
     
+    custom_headers = parse_key_value_pairs(args.header, ":")
+    custom_cookies = parse_key_value_pairs(args.cookie, "=")
+    
     results = await run_dir_scan(
         target_url=args.target,
         wordlist_path=args.wordlist,
         concurrency=args.concurrency,
         proxy=args.proxy,
         exclude_statuses=exclude_statuses,
-        exclude_lengths=exclude_lengths
+        exclude_lengths=exclude_lengths,
+        custom_headers=custom_headers,
+        custom_cookies=custom_cookies
     )
     
     report_data = {
@@ -212,6 +234,8 @@ def main():
     parser.add_argument("--download-wordlist", choices=["jwt", "directories", "parameters", "subdomains"], default=None, help="Download standard wordlists")
     parser.add_argument("--wordlist", type=str, default="subdomains.txt", help="Path to wordlist file")
     parser.add_argument("--proxy", type=str, default=None, help="Upstream proxy URL (e.g., http://127.0.0.1:8080 or socks5://127.0.0.1:9050)")
+    parser.add_argument("--header", action="append", help="Custom header in 'Key:Value' format (can be used multiple times)")
+    parser.add_argument("--cookie", action="append", help="Custom cookie in 'Name=Value' format (can be used multiple times)")
     parser.add_argument("--method", type=str, default="GET", help="HTTP method")
     parser.add_argument("--concurrency", type=int, default=20, help="Max concurrent requests")
     parser.add_argument("--delay", type=float, default=0.0, help="Delay between requests")

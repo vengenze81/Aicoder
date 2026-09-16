@@ -2,78 +2,71 @@ import asyncio
 import aiohttp
 import random
 from rich.console import Console
+from term_analyzer.secrets_finder import extract_secrets
 
 console = Console()
 
 USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2.1 Safari/605.1.15",
-    "Mozilla/5.0 (X11; Linux x86_64; rv:123.0) Gecko/20100101 Firefox/123.0"
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Safari/605.1.15",
+    "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0"
 ]
 
-def load_payload_files(paths_str):
-    """Loads multiple payload files separated by commas."""
-    file_paths = [p.strip() for p in paths_str.split(",")]
-    all_payloads = []
-    for fp in file_paths:
-        with open(fp, "r", encoding="utf-8") as f:
-            lines = [line.strip() for line in f if line.strip()]
-            all_payloads.append(lines)
-    return all_payloads
+def load_payload_files(filepaths_str):
+    """Loads one or more comma-separated payload files."""
+    paths = [p.strip() for p in filepaths_str.split(",")]
+    all_payload_lists = []
+    for path in paths:
+        try:
+            with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                payloads = [line.strip() for line in f if line.strip() and not line.startswith("#")]
+                all_payload_lists.append(payloads)
+        except Exception as e:
+            console.print(f"[bold red][!] Error loading payload file {path}: {e}[/bold red]")
+            all_payload_lists.append([])
+    return all_payload_lists
 
-def build_multimarker_request(template, payload_tuple):
-    """Replaces each successive '§§' in the template with items from payload_tuple."""
-    if not template:
-        return None
-    parts = template.split("§§")
-    result = []
-    for i, part in enumerate(parts[:-1]):
-        result.append(part)
-        p_val = payload_tuple[min(i, len(payload_tuple) - 1)]
-        result.append(str(p_val))
-    result.append(parts[-1])
-    return "".join(result)
+async def fuzz_advanced(session, method, url_template, body_template, payload_tuple, semaphore, delay=0.0, rotate_ua=False, smart_pause=False, lockout_str=None, pause_duration=15.0, pause_lock=None, custom_headers=None, custom_cookies=None):
+    url = url_template
+    for i, payload in enumerate(payload_tuple):
+        url = url.replace(f"§§", str(payload), 1)
+        
+    body = body_template
+    if body:
+        for i, payload in enumerate(payload_tuple):
+            body = body.replace(f"§§", str(payload), 1)
 
-async def fuzz_advanced(session, method, url_template, body_template, payload_tuple, semaphore, delay=0.0, base_headers=None, rotate_ua=False, smart_pause=False, lockout_str=None, pause_duration=15.0, pause_lock=None, extract_patterns=None, proxy=None):
+    headers = dict(custom_headers) if custom_headers else {}
+    if rotate_ua:
+        headers["User-Agent"] = random.choice(USER_AGENTS)
+
     async with semaphore:
         if delay > 0:
             await asyncio.sleep(delay)
             
-        target_url = build_multimarker_request(url_template, payload_tuple)
-        body = build_multimarker_request(body_template, payload_tuple) if body_template else None
-        
-        headers = dict(base_headers) if base_headers else {}
-        if rotate_ua:
-            headers["User-Agent"] = random.choice(USER_AGENTS)
-            
-        request_kwargs = {"headers": headers, "ssl": False}
-        if proxy:
-            request_kwargs["proxy"] = proxy
-            
-        if body is not None:
-            request_kwargs["data"] = body
+        if pause_lock and pause_lock.locked():
+            async with pause_lock:
+                pass
 
         try:
-            async with session.request(method.upper(), target_url, **request_kwargs) as response:
+            async with session.request(method.upper(), url, data=body, headers=headers, cookies=custom_cookies, allow_redirects=False, timeout=10) as response:
+                status = response.status
                 text = await response.text()
+                length = len(text)
+                secrets = extract_secrets(text)
                 
-                is_rate_limited = (response.status == 429) or (lockout_str and lockout_str in text)
-                if smart_pause and is_rate_limited:
-                    async with pause_lock:
-                        console.print(f"\n[bold yellow][!] Rate-limit detected (Status: {response.status}). Pausing execution for {pause_duration}s...[/bold yellow]")
-                        await asyncio.sleep(pause_duration)
-
-                from term_analyzer.rules import extract_secrets
-                secrets = extract_secrets(text, extract_patterns) if extract_patterns else {}
-                return (payload_tuple, response.status, len(text), text, secrets)
+                if smart_pause and status == 429:
+                    if pause_lock and not pause_lock.locked():
+                        async with pause_lock:
+                            console.print(f"[bold yellow][!] Rate limit (429) encountered. Pausing all tasks for {pause_duration}s...[/bold yellow]")
+                            await asyncio.sleep(pause_duration)
+                            
+                if lockout_str and lockout_str in text:
+                    if pause_lock and not pause_lock.locked():
+                        async with pause_lock:
+                            console.print(f"[bold red][!] Lockout string detected! Pausing tasks for {pause_duration}s...[/bold red]")
+                            await asyncio.sleep(pause_duration)
+                            
+                return payload_tuple, status, length, text, secrets
         except Exception as e:
-            return (payload_tuple, 0, 0, str(e), {})
-
-def get_defaults_for_port(port):
-    return {}
-
-def test_http_auth(url, user, password, **kwargs):
-    return False
-
-def run_credential_spray(targets, users, passwords, **kwargs):
-    pass
+            return payload_tuple, 0, 0, str(e), []
