@@ -38,6 +38,28 @@ def load_wordlist(filepath):
     with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
         return [line.strip() for line in f if line.strip() and not line.startswith('#')]
 
+def mutate_passwords(passwords):
+    """Intelligent mutation engine to expand a seed password list."""
+    mutated = set()
+    suffixes = ["", "123", "1234", "12345", "2025", "2026", "!", "123!", "@", "#"]
+    
+    for pwd in passwords:
+        mutated.add(pwd)
+        mutated.add(pwd.capitalize())
+        mutated.add(pwd.upper())
+        
+        leet = pwd.replace('a', '@').replace('e', '3').replace('i', '1').replace('o', '0').replace('s', '$')
+        mutated.add(leet)
+        mutated.add(leet.capitalize())
+        
+        for suffix in suffixes:
+            if suffix:
+                mutated.add(f"{pwd}{suffix}")
+                mutated.add(f"{pwd.capitalize()}{suffix}")
+                mutated.add(f"{leet}{suffix}")
+                
+    return list(mutated)
+
 def get_request_proxies(proxy_pool, single_proxy):
     """Determines proxies to use for a specific request."""
     if proxy_pool and proxy_pool.proxies:
@@ -382,6 +404,11 @@ def run_analysis(args):
     passwords = load_wordlist(args.passwords)
     paths = load_wordlist(args.paths) if args.paths else []
     
+    if args.mutate and passwords:
+        original_count = len(passwords)
+        passwords = mutate_passwords(passwords)
+        print(f"[*] Mutation engine active: Expanded password wordlist from {original_count} to {len(passwords)} entries.")
+
     proxy_pool = ProxyPool(args.proxy_file) if args.proxy_file else None
     if proxy_pool and proxy_pool.proxies:
         print(f"[*] Loaded {len(proxy_pool.proxies)} proxy(ies) for round-robin rotation.")
@@ -434,7 +461,7 @@ def run_analysis(args):
     else:
         for user in usernames:
             for pwd in passwords:
-                tasks.append(('form', user, pwd, args.url))
+                tasks.append(('form', user, pwd))
 
     with ThreadPoolExecutor(max_workers=args.threads) as executor:
         futures = []
@@ -444,7 +471,7 @@ def run_analysis(args):
             elif task[0] == 'digest':
                 futures.append(executor.submit(test_digest_auth, session, args.url, task[3], task[1], task[2], proxy_pool, args.proxy, args.verbose))
             else:
-                futures.append(executor.submit(test_form_auth, session, args.url, task[1], task[2], task[3], args.user_field, args.pass_field, args.failure_keyword, proxy_pool, args.proxy, args.verbose))
+                futures.append(executor.submit(test_form_auth, session, args.url, task[1], task[2], args.user_field, args.pass_field, args.failure_keyword, proxy_pool, args.proxy, args.verbose))
 
         for future in as_completed(futures):
             result = future.result()
@@ -455,7 +482,7 @@ def run_analysis(args):
     return valid_credentials
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Advanced Security Analyzer for Multiple Authentication Protocols with Proxy Rotation")
+    parser = argparse.ArgumentParser(description="Advanced Security Analyzer for Multiple Authentication Protocols with Wordlist Mutation")
     parser.add_argument("-u", "--url", required=True, help="Target URL")
     parser.add_argument("--auth-type", choices=["basic", "form", "digest", "api-token"], default="basic", help="Authentication type to test")
     parser.add_argument("--users", default="usernames.txt", help="Path to usernames wordlist")
@@ -465,6 +492,7 @@ if __name__ == "__main__":
     parser.add_argument("--pass-field", default="password", help="Form field name for password (Form Auth only)")
     parser.add_argument("--failure-keyword", default="invalid", help="Keyword in response body indicating login failure (Form Auth only)")
     parser.add_argument("--api-header", default="Bearer {token}", help="Header template for API tokens (API-Token Auth only)")
+    parser.add_argument("--mutate", action="store_true", help="Enable intelligent wordlist mutation engine (casing, leetspeak, suffixes)")
     parser.add_argument("-t", "--threads", type=int, default=10, help="Number of concurrent threads")
     parser.add_argument("--proxy", help="Route traffic through a single static proxy (e.g., http://127.0.0.1:8080)")
     parser.add_argument("--proxy-file", help="Path to a file containing a list of proxy URLs for round-robin rotation")
