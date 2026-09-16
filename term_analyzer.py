@@ -106,6 +106,35 @@ def load_wordlist(filepath):
     with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
         return [line.strip() for line in f if line.strip() and not line.startswith('#')]
 
+def load_combo_file(filepath):
+    """Parses combo files supporting user:pass, domain\\user:pass, email:pass, and url:user:pass formats."""
+    if not filepath or not os.path.exists(filepath):
+        return []
+    
+    combos = []
+    with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            
+            # Check for URL-scoped combo format (e.g. http://target.com/login:admin:password)
+            url_match = re.match(r'^(https?://[^:]+(?::\d+)?(?:/.*?)*):([^:]+):(.+)$', line)
+            if url_match:
+                target_url, username, password = url_match.groups()
+                combos.append((username.strip(), password.strip(), target_url.strip()))
+                continue
+
+            # Standard user:pass, domain\user:pass, email:pass parsing
+            if ':' in line:
+                parts = line.split(':', 1)
+                username = parts[0].strip()
+                password = parts[1].strip()
+                if username and password:
+                    combos.append((username, password, None))
+                    
+    return combos
+
 def mutate_passwords(passwords):
     """Applies smart password mutation rules (capitalization, years, leetspeak, symbols)."""
     mutated = set(passwords)
@@ -836,18 +865,32 @@ def export_html_report(findings, timing_vulns, length_outliers, report_path, met
     print(f"[*] Professional HTML report successfully exported to {report_path}")
 
 def run_analysis(args):
-    usernames = load_wordlist(args.users)
-    passwords = load_wordlist(args.passwords)
+    tasks = []
     
-    if not usernames:
-        usernames = ["admin", "root", "user"]
-    if not passwords:
-        passwords = ["password", "123456", "admin"]
+    if args.combo_file:
+        combos = load_combo_file(args.combo_file)
+        print(f"[*] Loaded {len(combos)} credential pair(s) from combo file: {args.combo_file}")
+        for user, pwd, combo_url in combos:
+            endpoint = combo_url if combo_url else args.url
+            tasks.append((user, pwd, endpoint))
+    else:
+        usernames = load_wordlist(args.users)
+        passwords = load_wordlist(args.passwords)
+        
+        if not usernames:
+            usernames = ["admin", "root", "user"]
+        if not passwords:
+            passwords = ["password", "123456", "admin"]
 
-    if args.mutate:
-        original_count = len(passwords)
-        passwords = mutate_passwords(passwords)
-        print(f"[*] Password Mutation Enabled: Expanded wordlist from {original_count} to {len(passwords)} candidates.")
+        if args.mutate:
+            original_count = len(passwords)
+            passwords = mutate_passwords(passwords)
+            print(f"[*] Password Mutation Enabled: Expanded wordlist from {original_count} to {len(passwords)} candidates.")
+
+        print(f"[*] Loaded {len(usernames)} username(s) and {len(passwords)} password(s).")
+        for user in usernames:
+            for pwd in passwords:
+                tasks.append((user, pwd, args.url))
 
     proxy_pool = ProxyPool(args.proxy_file) if args.proxy_file else None
     base_headers = parse_custom_headers(args.header)
@@ -857,35 +900,34 @@ def run_analysis(args):
 
     session = requests.Session()
 
-    print(f"[*] Loaded {len(usernames)} username(s) and {len(passwords)} password(s).")
     print(f"[*] Auth Type: {args.auth_type.upper()} | Content-Type: {args.content_type.upper()}")
     if args.adaptive_delay:
         print("[*] Adaptive Throttling & Auto-Backoff Enabled: Active latency monitoring engaged.")
 
-    if args.enum_users:
+    if args.enum_users and not args.combo_file:
+        usernames_list = list(set([t[0] for t in tasks]))
         run_user_enumeration(
-            session, args.url, usernames, args.auth_type, args.content_type,
+            session, args.url, usernames_list, args.auth_type, args.content_type,
             args.user_field, args.pass_field, proxy_pool, args.proxy, base_headers,
             cookies, args.extract_csrf, args.csrf_field, args.probe_password,
             throttler, args.threads, args.verbose
         )
 
-    print(f"[*] Running password audit with max {args.threads} concurrent threads...\n" + "-" * 60)
+    print(f"[*] Running audit with max {args.threads} concurrent threads...\n" + "-" * 60)
 
-    tasks = [(user, pwd) for user in usernames for pwd in passwords]
     all_results = []
     valid_credentials = []
 
     with ThreadPoolExecutor(max_workers=args.threads) as executor:
         futures = [
             executor.submit(
-                test_auth, session, args.url, user, pwd, args.auth_type,
+                test_auth, session, endpoint, user, pwd, args.auth_type,
                 args.content_type, args.user_field, args.pass_field, args.failure_keyword, 
                 args.success_regex, proxy_pool, args.proxy, base_headers, 
                 cookies, circuit_breaker, throttler, args.extract_csrf, args.csrf_field, 
                 args.lockout_keyword, args.verbose
             )
-            for user, pwd in tasks
+            for user, pwd, endpoint in tasks
         ]
 
         for future in as_completed(futures):
@@ -943,8 +985,8 @@ def run_analysis(args):
     return valid_credentials, timing_vulns, length_outliers
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Advanced Security Analyzer with Adaptive Throttling")
-    parser.add_argument("-u", "--url", required=True, help="Target URL")
+    parser = argparse.ArgumentParser(description="Advanced Security Analyzer with Combo & Domain Support")
+    parser.add_argument("-u", "--url", default="http://127.0.0.1:8080/login", help="Target URL")
     parser.add_argument("--auth-type", choices=["form", "basic", "digest"], default="form", help="Authentication type to test")
     parser.add_argument("--content-type", choices=["form", "json"], default="form", help="Payload content type for form/API auth")
     parser.add_argument("--extract-csrf", action="store_true", help="Automatically scrape and inject anti-CSRF token")
@@ -960,6 +1002,7 @@ if __name__ == "__main__":
     parser.add_argument("--mfa-url", help="Target endpoint for secondary MFA/OTP verification")
     parser.add_argument("--otp-field", default="otp_code", help="Form field name for the OTP/verification code")
     parser.add_argument("--otp-list", default="passwords.txt", help="Wordlist file containing candidate OTP/PIN codes")
+    parser.add_argument("--combo-file", help="Path to combo file (user:pass, domain\\user:pass, or url:user:pass)")
     parser.add_argument("--users", default="usernames.txt", help="Path to usernames wordlist")
     parser.add_argument("--passwords", default="passwords.txt", help="Path to passwords wordlist")
     parser.add_argument("--user-field", default="username", help="Payload field name for username")
