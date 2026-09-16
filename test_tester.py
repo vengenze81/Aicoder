@@ -1,12 +1,29 @@
+from __future__ import annotations
 import unittest
-from tester import PenetrationTester, ServiceInfo
+from tester import PortTester, ServiceInfo
 
-class TestPenetrationTester(unittest.TestCase):
+class TestTester(unittest.TestCase):
     def test_service_info_to_dict(self):
-        service = ServiceInfo(port=80, banner="HTTP/1.1")
+        service = ServiceInfo(port=80, banner="HTTP/1.0 200 OK", status="open", version="HTTP 1.0")
         d = service.to_dict()
-        self.assertEqual(d, {"port": 80, "status": "open", "banner": "HTTP/1.1"})
+        self.assertEqual(d["port"], 80)
+        self.assertEqual(d["status"], "open")
+        self.assertEqual(d["banner"], "HTTP/1.0 200 OK")
+
+    def test_version_extraction(self):
+        tester = PortTester("127.0.0.1")
+        
+        # Test Apache pattern
+        ver1 = tester._extract_version("Server: Apache/2.4.49 (Unix)")
+        self.assertEqual(ver1, "Apache 2.4.49")
+
+        # Test SSH pattern
+        ver2 = tester._extract_version("SSH-2.0-OpenSSH_8.2p1 Ubuntu")
+        self.assertEqual(ver2, "SSH 2.0")
+
+        # Test non-matching banner
+        ver3 = tester._extract_version("UnknownServiceBanner")
+        self.assertIsNone(ver3)
 
 if __name__ == "__main__":
     unittest.main()
-

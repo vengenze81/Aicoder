@@ -106,3 +106,27 @@ class ConfigFileFixRule(Rule):
         data[key] = suggestion["default"]
         self.config_path.write_text(json.dumps(data, indent=2))
         log.info("Patched %s – set %s = %r", self.config_path, key, suggestion["default"])
+
+class VulnerableServiceRule(Rule):
+    name = "VulnerableService"
+    
+    _VULN_PATTERNS = [
+        (re.compile(r"Apache[/\s](2\.4\.49|2\.4\.50)", re.IGNORECASE), "CVE-2021-41773: Apache Path Traversal"),
+        (re.compile(r"OpenSSH[_\s]([0-7]\.|8\.[01])", re.IGNORECASE), "Outdated OpenSSH version with potential vulnerabilities"),
+    ]
+
+    def evaluate(self, parsed: ParsedLog) -> List[Dict[str, Any]]:
+        suggestions = []
+        for entry in parsed.all_entries():
+            for pattern, vuln_desc in self._VULN_PATTERNS:
+                if pattern.search(entry.message):
+                    suggestion = {
+                        "rule": self.name,
+                        "severity": "high",
+                        "message": f"Vulnerable service detected: {vuln_desc} found in message: '{entry.message}'",
+                        "action": "flag_security_risk",
+                    }
+                    self.apply(suggestion)
+                    suggestions.append(suggestion)
+                    break
+        return suggestions

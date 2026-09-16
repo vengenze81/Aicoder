@@ -1,0 +1,24 @@
+[33mcommit 692b6d3625338e6476d150a1af04d4369e8d65f8[m[33m ([m[1;32mai-task-1789543954[m[33m, [m[1;32mai-task-1789543866[m[33m)[m
+Author: AICoder <aicoder@local.dev>
+Date:   Wed Sep 16 09:26:30 2026 +0200
+
+    Add unit tests for ServiceInfo serialization
+
+[1mdiff --git a/test_penetration_tester.py b/test_penetration_tester.py[m
+[1mnew file mode 100644[m
+[1mindex 0000000..0f722fa[m
+[1m--- /dev/null[m
+[1m+++ b/test_penetration_tester.py[m
+[36m@@ -0,0 +1,11 @@[m
+[32m+[m[32mimport unittest[m
+[32m+[m[32mfrom penetration_tester import PenetrationTester, ServiceInfo[m
+[32m+[m
+[32m+[m[32mclass TestPenetrationTester(unittest.TestCase):[m
+[32m+[m[32m    def test_service_info_to_dict(self):[m
+[32m+[m[32m        service = ServiceInfo(port=80, banner="HTTP/1.0 200 OK", status="open")[m
+[32m+[m[32m        d = service.to_dict()[m
+[32m+[m[32m        self.assertEqual(d, {"port": 80, "status": "open", "banner": "HTTP/1.0 200 OK"})[m
+[32m+[m
+[32m+[m[32mif __name__ == "__main__":[m
+[32m+[m[32m    unittest.main()[m
+\ No newline at end of file[m
