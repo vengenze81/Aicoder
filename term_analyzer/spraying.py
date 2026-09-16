@@ -66,7 +66,7 @@ def test_ftp_auth(host, port, username, password):
         return False, f"FTP Error: {e}"
 
 def test_http_auth(host, port, username, password, custom_headers=None):
-    """Tests HTTP authentication with automated common path discovery and schema fallback."""
+    """Tests HTTP authentication supporting both Basic Auth and HTML Form-Based POST with common field names."""
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
@@ -74,7 +74,7 @@ def test_http_auth(host, port, username, password, custom_headers=None):
     if custom_headers:
         headers.update(parse_headers(custom_headers))
 
-    common_paths = ["/", "/login", "/admin", "/signin", "/wp-login.php", "/administrator/", "/auth/login"]
+    common_paths = ["/", "/login", "/login.php", "/admin", "/signin", "/wp-login.php", "/administrator/", "/auth/login"]
     schemes = ["https", "http"] if port in [443, 8080] else ["http", "https"]
     last_error = ""
 
@@ -82,28 +82,50 @@ def test_http_auth(host, port, username, password, custom_headers=None):
         for login_path in common_paths:
             url = f"{scheme}://{host}:{port}{login_path}"
             try:
-                # First, check if the path exists/responds (avoid wasting time on 404s)
                 probe = requests.get(url, headers=headers, timeout=2, allow_redirects=True, verify=False)
                 if probe.status_code == 404:
                     continue
                 
-                # Try authentication on this valid endpoint
-                response = requests.get(url, auth=HTTPBasicAuth(username, password), headers=headers, timeout=3, allow_redirects=True, verify=False)
-                if response.status_code in [200, 302, 204]:
-                    return True, f"HTTP Success ({scheme.upper()}) at {login_path} (Status: {response.status_code})"
-                elif response.status_code == 401:
-                    return False, f"Unauthorized (401) on {scheme.upper()} {login_path}"
+                # 1. Try HTTP Basic Authentication first
+                resp_basic = requests.get(url, auth=HTTPBasicAuth(username, password), headers=headers, timeout=3, allow_redirects=True, verify=False)
+                if resp_basic.status_code in [200, 302, 204] and resp_basic.status_code != 401:
+                    resp_text = resp_basic.text.lower()
+                    if not ("invalid" in resp_text and "login" in resp_text):
+                        return True, f"HTTP Basic Success ({scheme.upper()}) at {login_path} (Status: {resp_basic.status_code})"
+
+                # 2. Try Form-Based POST Authentication with common parameter variations
+                form_payloads = [
+                    {"username": username, "password": password},
+                    {"user": username, "pass": password},
+                    {"email": username, "password": password},
+                    {"username": username, "passwd": password},
+                    {"log": username, "pwd": password}
+                ]
+                
+                failure_keywords = ["invalid", "incorrect", "failed", "wrong", "error", "bad credentials", "denied"]
+                success_keywords = ["welcome", "dashboard", "logout", "success", "congratulations", "panel", "flag"]
+
+                for payload in form_payloads:
+                    resp_post = requests.post(url, data=payload, headers=headers, timeout=3, allow_redirects=True, verify=False)
+                    resp_text = resp_post.text.lower()
+                    
+                    is_failure = any(kw in resp_text for kw in failure_keywords)
+                    is_success_kw = any(kw in resp_text for kw in success_keywords)
+                    
+                    if resp_post.status_code in [200, 302] and not is_failure and (is_success_kw or resp_post.url != url or resp_post.status_code == 302):
+                        return True, f"HTTP Form POST Success ({scheme.upper()}) at {login_path} (Status: {resp_post.status_code})"
+
             except requests.exceptions.SSLError:
                 last_error = "SSL Certificate Error"
                 continue
             except requests.exceptions.ConnectionError:
-                break # If connection drops for this scheme/port, switch scheme
+                break
             except requests.exceptions.Timeout:
                 continue
-            except Exception as e:
+            except Exception:
                 continue
 
-    return False, last_error or "No active login endpoint found or authentication failed"
+    return False, last_error or "No active login endpoint or valid credentials found"
 
 def test_ssh_auth(host, port, username, password):
     if not PARAMIKO_AVAILABLE:
