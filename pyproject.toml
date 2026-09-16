@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "term-analyzer"
+version = "0.1.0"
+description = "Active network reconnaissance and log analysis engine for Termux/Android"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "rich>=10.0.0",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: Android",
+    "Environment :: Console",
+]
+
+[project.scripts]
+term-analyzer = "term_analyzer.cli:main"
+
+[tool.setuptools]
+py-modules = ["tester"]
+
+[tool.setuptools.packages.find]
+include = ["term_analyzer*"]
