@@ -13,6 +13,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from collections import Counter, defaultdict
 
+try:
+    from bs4 import BeautifulSoup
+    BS4_AVAILABLE = True
+except ImportError:
+    BS4_AVAILABLE = False
+
 # Suppress insecure request warnings if testing self-signed certs
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -101,8 +107,44 @@ def parse_cookies(cookie_arg):
                 cookies[k.strip()] = v.strip()
     return cookies
 
-def test_auth(session, target_url, username, password, auth_type, content_type, user_field, pass_field, failure_keyword, success_regex, proxy_pool, single_proxy, base_headers, cookies, circuit_breaker, delay=0, lockout_keyword=None, verbose=False):
-    """Handles testing for HTML Form, JSON API, HTTP Basic, and HTTP Digest authentication with circuit breaker protection."""
+def extract_csrf_token(html_content, csrf_field_name):
+    """Extracts a dynamic CSRF token from HTML using BeautifulSoup or regex fallback."""
+    token = None
+    if BS4_AVAILABLE:
+        try:
+            soup = BeautifulSoup(html_content, 'html.parser')
+            # Search by name attribute in input fields
+            inp = soup.find('input', {'name': csrf_field_name})
+            if inp and inp.get('value'):
+                return inp.get('value')
+            
+            # Search meta tags as alternative
+            meta = soup.find('meta', {'name': csrf_field_name})
+            if meta and meta.get('content'):
+                return meta.get('content')
+            
+            # Fuzzy match fallback for inputs containing csrf or token in name
+            for tag in soup.find_all('input', {'name': re.compile(r'csrf|token', re.I)}):
+                if tag.get('value'):
+                    return tag.get('value')
+        except Exception:
+            pass
+
+    # Regex fallback if BeautifulSoup fails or is unavailable
+    pattern = rf'<input[^>]+name=["\']?{csrf_field_name}["\']?[^>]+value=["\']?([^"\']+)["\']?'
+    match = re.search(pattern, html_content, re.IGNORECASE)
+    if match:
+        token = match.group(1)
+    else:
+        # Generic fallback pattern
+        generic_match = re.search(r'<input[^>]+value=["\']?([^"\']+)["\']?[^>]+name=["\']?.*?(?:csrf|token).*?["\']?', html_content, re.IGNORECASE)
+        if generic_match:
+            token = generic_match.group(1)
+            
+    return token
+
+def test_auth(session, target_url, username, password, auth_type, content_type, user_field, pass_field, failure_keyword, success_regex, proxy_pool, single_proxy, base_headers, cookies, circuit_breaker, extract_csrf=False, csrf_field="csrf_token", delay=0, lockout_keyword=None, verbose=False):
+    """Handles authentication testing with optional dynamic CSRF token extraction and circuit breaker protection."""
     if circuit_breaker.is_tripped():
         return None
 
@@ -116,26 +158,40 @@ def test_auth(session, target_url, username, password, auth_type, content_type, 
 
     try:
         if auth_type == "form":
+            hidden_inputs = {}
+            csrf_token = None
+
+            # Always perform a GET request first if hidden inputs or CSRF extraction is requested
+            get_resp = session.get(target_url, headers=headers, cookies=cookies, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
+            
+            if get_resp.status_code == 200:
+                if extract_csrf:
+                    csrf_token = extract_csrf_token(get_resp.text, csrf_field)
+
+                matches = re.findall(r'<input[^>]+type=["\']?hidden["\']?[^>]*>', get_resp.text, re.IGNORECASE)
+                for m in matches:
+                    name_match = re.search(r'name=["\']?([^"\']+)["\']?', m, re.IGNORECASE)
+                    val_match = re.search(r'value=["\']?([^"\']*)["\']?', m, re.IGNORECASE)
+                    if name_match:
+                        name = name_match.group(1)
+                        val = val_match.group(1) if val_match else ""
+                        hidden_inputs[name] = val
+
+            if csrf_token:
+                hidden_inputs[csrf_field] = csrf_token
+
             if content_type == "json":
                 headers["Content-Type"] = "application/json"
-                payload = json.dumps({user_field: username, pass_field: password})
+                payload_dict = {
+                    user_field: username,
+                    pass_field: password,
+                    **hidden_inputs
+                }
+                payload = json.dumps(payload_dict)
                 resp = session.post(target_url, data=payload, headers=headers, cookies=cookies, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
             else:
                 if "Content-Type" not in headers:
                     headers["Content-Type"] = "application/x-www-form-urlencoded"
-                
-                get_resp = session.get(target_url, headers=headers, cookies=cookies, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
-                
-                hidden_inputs = {}
-                if get_resp.status_code == 200:
-                    matches = re.findall(r'<input[^>]+type=["\']?hidden["\']?[^>]*>', get_resp.text, re.IGNORECASE)
-                    for m in matches:
-                        name_match = re.search(r'name=["\']?([^"\']+)["\']?', m, re.IGNORECASE)
-                        val_match = re.search(r'value=["\']?([^"\']*)["\']?', m, re.IGNORECASE)
-                        if name_match:
-                            name = name_match.group(1)
-                            val = val_match.group(1) if val_match else ""
-                            hidden_inputs[name] = val
 
                 payload = {
                     user_field: username,
@@ -179,8 +235,6 @@ def test_auth(session, target_url, username, password, auth_type, content_type, 
         if resp and check_lockout(resp.text, status_code, lockout_keyword):
             circuit_breaker.record_lockout()
             print(f"[!] [CIRCUIT BREAKER WARNING] Lockout/Rate-limit triggered for user '{username}' at {target_url} (Status: {status_code})")
-            if circuit_breaker.is_tripped():
-                print(f"[!] [CRITICAL ALERT] Lockout threshold reached! Halting scan to prevent account lockout/IP ban.")
 
         captured_cookies = {c.name: c.value for c in resp.cookies} if resp else {}
         captured_headers = {k: v for k, v in resp.headers.items() if 'auth' in k.lower() or 'token' in k.lower() or 'set-cookie' in k.lower()} if resp else {}
@@ -205,7 +259,8 @@ def test_auth(session, target_url, username, password, auth_type, content_type, 
             if captured_headers:
                 print(f"    [+] Harvested Auth Headers: {captured_headers}\n")
         elif verbose:
-            print(f"[-] Failed {auth_type} login {username}:{password} at {target_url} (Status: {status_code}, Length: {resp_length}B)")
+            csrf_status = f" | CSRF: Found" if (extract_csrf and 'csrf_token' in locals() and csrf_token) else ""
+            print(f"[-] Failed {auth_type} login {username}:{password} at {target_url} (Status: {status_code}, Length: {resp_length}B{csrf_status})")
 
         return result
 
@@ -522,7 +577,7 @@ def run_analysis(args):
     session = requests.Session()
 
     print(f"[*] Loaded {len(usernames)} username(s) and {len(passwords)} password(s).")
-    print(f"[*] Auth Type: {args.auth_type.upper()} | Content-Type: {args.content_type.upper()}")
+    print(f"[*] Auth Type: {args.auth_type.upper()} | Content-Type: {args.content_type.upper()}" + (f" | CSRF Extraction: Enabled ({args.csrf_field})" if args.extract_csrf else ""))
     print(f"[*] Running with max {args.threads} concurrent threads...\n" + "-" * 60)
 
     tasks = [(user, pwd) for user in usernames for pwd in passwords]
@@ -535,7 +590,8 @@ def run_analysis(args):
                 test_auth, session, args.url, user, pwd, args.auth_type,
                 args.content_type, args.user_field, args.pass_field, args.failure_keyword, 
                 args.success_regex, proxy_pool, args.proxy, base_headers, 
-                cookies, circuit_breaker, args.delay, args.lockout_keyword, args.verbose
+                cookies, circuit_breaker, args.extract_csrf, args.csrf_field, 
+                args.delay, args.lockout_keyword, args.verbose
             )
             for user, pwd in tasks
         ]
@@ -571,10 +627,12 @@ def run_analysis(args):
     return valid_credentials, timing_vulns, length_outliers
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Advanced Security Analyzer with JSON API Auth & Circuit Breaker")
+    parser = argparse.ArgumentParser(description="Advanced Security Analyzer with Dynamic CSRF Extraction")
     parser.add_argument("-u", "--url", required=True, help="Target URL")
     parser.add_argument("--auth-type", choices=["form", "basic", "digest"], default="form", help="Authentication type to test")
     parser.add_argument("--content-type", choices=["form", "json"], default="form", help="Payload content type for form/API auth")
+    parser.add_argument("--extract-csrf", action="store_true", help="Automatically scrape and inject anti-CSRF token")
+    parser.add_argument("--csrf-field", default="csrf_token", help="Name of the form/JSON field for CSRF token")
     parser.add_argument("--users", default="usernames.txt", help="Path to usernames wordlist")
     parser.add_argument("--passwords", default="passwords.txt", help="Path to passwords wordlist")
     parser.add_argument("--user-field", default="username", help="Payload field name for username")
