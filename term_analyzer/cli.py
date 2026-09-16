@@ -8,9 +8,15 @@ import sys
 from pathlib import Path
 from typing import List
 
-from .parser import LogParser
+from .parser import LogParser, ParsedLog, LogEntry
 from .reporter import json_report, pretty_report
-from .rules import TooManyErrorsRule, UnusedDepWarningRule, ConfigFileFixRule
+from .rules import TooManyErrorsRule, UnusedDepWarningRule, ConfigFileFixRule, VulnerableServiceRule
+
+# Try importing PortTester from root project if available
+try:
+    from tester import PortTester
+except ImportError:
+    PortTester = None
 
 log = logging.getLogger(__name__)
 
@@ -27,14 +33,41 @@ def build_rule_set(args: argparse.Namespace) -> List:
     rules = [
         TooManyErrorsRule(dry_run=args.dry_run),
         UnusedDepWarningRule(dry_run=args.dry_run),
+        VulnerableServiceRule(dry_run=args.dry_run),
     ]
     if args.config:
         rules.append(ConfigFileFixRule(Path(args.config), dry_run=args.dry_run))
     return rules
 
+def perform_scan(target: str, ports_str: str) -> ParsedLog:
+    """Actively scan target ports and package results into a ParsedLog object."""
+    if not PortTester:
+        raise RuntimeError("PortTester module (`tester.py`) could not be imported.")
+    
+    ports = [int(p.strip()) for p in ports_str.split(",") if p.strip().isdigit()]
+    parsed = ParsedLog()
+    
+    tester = PortTester(target)
+    log.info("Starting active reconnaissance scan on %s across ports: %s", target, ports)
+    
+    for port in ports:
+        service = tester.grab_banner(port)
+        if service.status == "open":
+            msg = f"Discovered open port {port} with banner: {service.banner or 'No banner'}"
+            if service.version:
+                msg += f" (Identified version: {service.version})"
+            entry = LogEntry(raw=f"info: {msg}", kind="info")
+            parsed.infos.append(entry)
+        else:
+            log.debug("Port %s is closed or filtered.", port)
+            
+    return parsed
+
 def main(argv: List[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Analyze terminal output and apply suggested rules.")
-    parser.add_argument("input", nargs="?", type=argparse.FileType("r"), default=sys.stdin, help="Log file to parse (default: stdin)")
+    parser = argparse.ArgumentParser(description="Analyze terminal output or perform active security reconnaissance.")
+    parser.add_argument("input", nargs="?", type=argparse.FileType("r"), default=None, help="Log file to parse (default: stdin if not scanning)")
+    parser.add_argument("--scan", type=str, metavar="TARGET", help="Perform active reconnaissance scan on target IP/hostname")
+    parser.add_argument("--ports", type=str, default="21,22,25,80,443,3306,8080", help="Comma-separated list of ports to scan (used with --scan)")
     parser.add_argument("--config", type=str, help="Path to a JSON config file for patching rules")
     parser.add_argument("--dry-run", action="store_true", default=True, help="Perform a dry run without modifying files (default)")
     parser.add_argument("--apply", dest="dry_run", action="store_false", help="Actually apply changes/side-effects")
@@ -45,10 +78,14 @@ def main(argv: List[str] | None = None) -> int:
     _setup_logging(args.verbose > 0)
 
     try:
-        log.info("Parsing terminal output stream...")
-        parsed = LogParser.parse(args.input)
-        rules = build_rule_set(args)
+        if args.scan:
+            parsed = perform_scan(args.scan, args.ports)
+        else:
+            log.info("Parsing terminal output stream...")
+            source = args.input if args.input is not None else sys.stdin
+            parsed = LogParser.parse(source)
 
+        rules = build_rule_set(args)
         suggestions = []
         for rule in rules:
             suggestions.extend(rule.evaluate(parsed))
@@ -60,7 +97,7 @@ def main(argv: List[str] | None = None) -> int:
 
         return 0
     except Exception as exc:
-        log.error("Fatal error during analysis: %s", exc)
+        log.error("Fatal error during analysis/recon: %s", exc)
         return 1
 
 if __name__ == "__main__":
