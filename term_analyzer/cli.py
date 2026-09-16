@@ -2,6 +2,8 @@ import asyncio
 import argparse
 import logging
 import sys
+import json
+import os
 from term_analyzer.tester import PortTester, discover_local_interfaces
 from term_analyzer.db import DatabaseManager
 
@@ -10,6 +12,24 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s – %(message)s"
 )
 logger = logging.getLogger("term_analyzer.cli")
+
+def load_config():
+    default_config = {
+        "ports": "21,22,80,443,3306,8080",
+        "wordlist": "custom_paths.txt",
+        "ext": "json,html,bak,txt",
+        "recursive": True,
+        "audit": True,
+        "output": "recon_report.html"
+    }
+    if os.path.exists("config.json"):
+        try:
+            with open("config.json", "r") as f:
+                user_config = json.load(f)
+                default_config.update(user_config)
+        except Exception:
+            pass
+    return default_config
 
 async def run_scan_on_target(target: str, ports_str: str, fuzz: bool = False, audit: bool = False, spray_pass: str = None, output: str = None, ext: str = None, recursive: bool = False, wordlist: str = None) -> None:
     try:
@@ -184,6 +204,15 @@ async def run_scan_on_target(target: str, ports_str: str, fuzz: bool = False, au
         print(f"[+] HTML report successfully saved to {report_filename}")
 
 async def main_async(args):
+    config = load_config()
+
+    ports_val = args.ports or config.get("ports", "21,22,80,443,3306,8080")
+    wordlist_val = args.wordlist or config.get("wordlist")
+    ext_val = args.ext or config.get("ext")
+    recursive_val = args.recursive if args.recursive else config.get("recursive", False)
+    audit_val = args.audit if args.audit else config.get("audit", False)
+    output_val = args.output or config.get("output", "report.html")
+
     targets = []
     if args.scan:
         targets.append(args.scan)
@@ -203,14 +232,14 @@ async def main_async(args):
     for target in targets:
         await run_scan_on_target(
             target=target,
-            ports_str=args.ports,
+            ports_str=ports_val,
             fuzz=args.fuzz,
-            audit=args.audit,
+            audit=audit_val,
             spray_pass=args.spray,
-            output=args.output,
-            ext=args.ext,
-            recursive=args.recursive,
-            wordlist=args.wordlist
+            output=output_val,
+            ext=ext_val,
+            recursive=recursive_val,
+            wordlist=wordlist_val
         )
 
 def main():
@@ -219,10 +248,10 @@ def main():
     group.add_argument("--scan", help="Target IP or hostname to scan")
     group.add_argument("--cidr", help="Target CIDR subnet to sweep (e.g. 192.168.68.0/24)")
     
-    parser.add_argument("--ports", default="21,22,80,443,3306,8080", help="Comma-separated list of ports")
+    parser.add_argument("--ports", help="Comma-separated list of ports")
     parser.add_argument("--fuzz", action="store_true", help="Automatically fuzz discovered web endpoints")
     parser.add_argument("--wordlist", help="Path to custom external text wordlist file for fuzzing")
-    parser.add_argument("--ext", help="Comma-separated file extensions to fuzz (e.g. json,php,bak,txt)")
+    parser.add_argument("--ext", help="Comma-separated file extensions to fuzz")
     parser.add_argument("--recursive", action="store_true", help="Recursively crawl discovered subdirectories")
     parser.add_argument("--audit", action="store_true", help="Audit discovered services for unauth access")
     parser.add_argument("--spray", help="Candidate password for HTTP basic auth credential spray")
