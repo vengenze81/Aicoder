@@ -2,7 +2,7 @@ import asyncio
 import argparse
 import logging
 import sys
-from tester import PortTester, discover_local_interfaces
+from term_analyzer.tester import PortTester, discover_local_interfaces
 from term_analyzer.db import DatabaseManager
 
 logging.basicConfig(
@@ -11,7 +11,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("term_analyzer.cli")
 
-async def perform_scan_async(target: str, ports_str: str, fuzz: bool = False, audit: bool = False, spray_pass: str = None, output: str = None, ext: str = None, recursive: bool = False) -> None:
+async def perform_scan_async(target: str, ports_str: str, fuzz: bool = False, audit: bool = False, spray_pass: str = None, output: str = None, ext: str = None, recursive: bool = False, wordlist: str = None) -> None:
     try:
         ports = [int(p.strip()) for p in ports_str.split(",")]
     except ValueError:
@@ -58,14 +58,25 @@ async def perform_scan_async(target: str, ports_str: str, fuzz: bool = False, au
         if not web_ports:
             web_ports = [p["port"] for p in open_ports]
 
-        default_paths = ["admin", "login", "api", "dashboard", "config", "status", "test", "v1", "backup", "index"]
+        # Determine paths from wordlist or defaults
+        paths = ["admin", "login", "api", "dashboard", "config", "status", "test", "v1", "backup", "index"]
+        if wordlist:
+            try:
+                with open(wordlist, "r", encoding="utf-8", errors="ignore") as wf:
+                    custom_paths = [line.strip() for line in wf if line.strip() and not line.startswith("#")]
+                    if custom_paths:
+                        paths = custom_paths
+                        logger.info(f"Loaded {len(paths)} paths from custom wordlist: {wordlist}")
+            except Exception as e:
+                logger.warning(f"Could not read wordlist file {wordlist}: {e}. Falling back to default paths.")
+
         extensions_list = [e.strip() for e in ext.split(",")] if ext else []
 
         for port in web_ports:
             scheme = "https" if port in {443, 8443} else "http"
             base_url = f"{scheme}://{target}:{port}"
-            logger.info(f"[*] Running web directory fuzzing across {base_url} with {len(default_paths)} paths (Extensions: {extensions_list}, Recursive: {recursive})...")
-            hits = await tester.fuzz_http_endpoints(base_url, default_paths, extensions=extensions_list, recursive=recursive)
+            logger.info(f"[*] Running web directory fuzzing across {base_url} with {len(paths)} paths (Extensions: {extensions_list}, Recursive: {recursive})...")
+            hits = await tester.fuzz_http_endpoints(base_url, paths, extensions=extensions_list, recursive=recursive)
             if hits:
                 for hit in hits:
                     print(f" [+] Found: {hit['url']} [Status: {hit['status']}, Size: {hit['size']} bytes]")
@@ -188,6 +199,7 @@ def main():
     parser.add_argument("--scan", help="Target IP or hostname to scan")
     parser.add_argument("--ports", default="21,22,80,443,3306,8080", help="Comma-separated list of ports")
     parser.add_argument("--fuzz", action="store_true", help="Automatically fuzz discovered web endpoints")
+    parser.add_argument("--wordlist", help="Path to custom external text wordlist file for fuzzing")
     parser.add_argument("--ext", help="Comma-separated file extensions to fuzz (e.g. json,php,bak,txt)")
     parser.add_argument("--recursive", action="store_true", help="Recursively crawl discovered subdirectories")
     parser.add_argument("--audit", action="store_true", help="Audit discovered services for unauth access")
@@ -209,7 +221,8 @@ def main():
         spray_pass=args.spray,
         output=args.output,
         ext=args.ext,
-        recursive=args.recursive
+        recursive=args.recursive,
+        wordlist=args.wordlist
     ))
 
 if __name__ == "__main__":

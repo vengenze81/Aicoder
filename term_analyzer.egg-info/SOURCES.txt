@@ -1,12 +1,12 @@
 README.md
 pyproject.toml
-tester.py
 term_analyzer/__init__.py
 term_analyzer/cli.py
 term_analyzer/db.py
 term_analyzer/parser.py
 term_analyzer/reporter.py
 term_analyzer/rules.py
+term_analyzer/tester.py
 term_analyzer/tui.py
 term_analyzer.egg-info/PKG-INFO
 term_analyzer.egg-info/SOURCES.txt
