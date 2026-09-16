@@ -1,0 +1,26 @@
+[
+    {
+        "target": "tidformera.se",
+        "port": 8080,
+        "username": "admin",
+        "password": "password",
+        "success": false,
+        "message": "SSL Certificate Error"
+    },
+    {
+        "target": "tidformera.se",
+        "port": 443,
+        "username": "admin",
+        "password": "password",
+        "success": false,
+        "message": "No active login endpoint or valid credentials found"
+    },
+    {
+        "target": "tidformera.se",
+        "port": 80,
+        "username": "admin",
+        "password": "password",
+        "success": false,
+        "message": "SSL Certificate Error"
+    }
+]

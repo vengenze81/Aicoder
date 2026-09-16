@@ -1,0 +1,402 @@
+[
+    {
+        "target": "23.227.38.65",
+        "port": 80,
+        "username": "admin",
+        "password": "password",
+        "success": false,
+        "message": "SSL Certificate Error"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 80,
+        "username": "admin",
+        "password": "admin123",
+        "success": false,
+        "message": "SSL Certificate Error"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 80,
+        "username": "admin",
+        "password": "welcome1",
+        "success": false,
+        "message": "SSL Certificate Error"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 80,
+        "username": "admin",
+        "password": "secret",
+        "success": false,
+        "message": "SSL Certificate Error"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 80,
+        "username": "admin",
+        "password": "123456",
+        "success": false,
+        "message": "SSL Certificate Error"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 80,
+        "username": "root",
+        "password": "secret",
+        "success": false,
+        "message": "SSL Certificate Error"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 80,
+        "username": "root",
+        "password": "123456",
+        "success": false,
+        "message": "SSL Certificate Error"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 80,
+        "username": "root",
+        "password": "password",
+        "success": false,
+        "message": "SSL Certificate Error"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 80,
+        "username": "root",
+        "password": "admin123",
+        "success": false,
+        "message": "SSL Certificate Error"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 80,
+        "username": "root",
+        "password": "welcome1",
+        "success": false,
+        "message": "SSL Certificate Error"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 80,
+        "username": "user",
+        "password": "secret",
+        "success": false,
+        "message": "SSL Certificate Error"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 80,
+        "username": "user",
+        "password": "password",
+        "success": false,
+        "message": "SSL Certificate Error"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 80,
+        "username": "user",
+        "password": "admin123",
+        "success": false,
+        "message": "SSL Certificate Error"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 80,
+        "username": "user",
+        "password": "welcome1",
+        "success": false,
+        "message": "SSL Certificate Error"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 80,
+        "username": "user",
+        "password": "123456",
+        "success": false,
+        "message": "SSL Certificate Error"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 80,
+        "username": "test",
+        "password": "admin123",
+        "success": false,
+        "message": "SSL Certificate Error"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 80,
+        "username": "test",
+        "password": "123456",
+        "success": false,
+        "message": "SSL Certificate Error"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 80,
+        "username": "test",
+        "password": "password",
+        "success": false,
+        "message": "SSL Certificate Error"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 80,
+        "username": "test",
+        "password": "welcome1",
+        "success": false,
+        "message": "SSL Certificate Error"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 80,
+        "username": "test",
+        "password": "secret",
+        "success": false,
+        "message": "SSL Certificate Error"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 80,
+        "username": "manager",
+        "password": "secret",
+        "success": false,
+        "message": "SSL Certificate Error"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 80,
+        "username": "manager",
+        "password": "password",
+        "success": false,
+        "message": "SSL Certificate Error"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 80,
+        "username": "manager",
+        "password": "admin123",
+        "success": false,
+        "message": "SSL Certificate Error"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 80,
+        "username": "manager",
+        "password": "123456",
+        "success": false,
+        "message": "SSL Certificate Error"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 80,
+        "username": "manager",
+        "password": "welcome1",
+        "success": false,
+        "message": "SSL Certificate Error"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 443,
+        "username": "admin",
+        "password": "123456",
+        "success": false,
+        "message": "No active login endpoint or valid credentials found"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 443,
+        "username": "admin",
+        "password": "welcome1",
+        "success": false,
+        "message": "No active login endpoint or valid credentials found"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 443,
+        "username": "admin",
+        "password": "password",
+        "success": false,
+        "message": "No active login endpoint or valid credentials found"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 443,
+        "username": "admin",
+        "password": "secret",
+        "success": false,
+        "message": "No active login endpoint or valid credentials found"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 443,
+        "username": "admin",
+        "password": "admin123",
+        "success": false,
+        "message": "No active login endpoint or valid credentials found"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 443,
+        "username": "root",
+        "password": "password",
+        "success": false,
+        "message": "No active login endpoint or valid credentials found"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 443,
+        "username": "root",
+        "password": "123456",
+        "success": false,
+        "message": "No active login endpoint or valid credentials found"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 443,
+        "username": "root",
+        "password": "secret",
+        "success": false,
+        "message": "No active login endpoint or valid credentials found"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 443,
+        "username": "root",
+        "password": "admin123",
+        "success": false,
+        "message": "No active login endpoint or valid credentials found"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 443,
+        "username": "root",
+        "password": "welcome1",
+        "success": false,
+        "message": "No active login endpoint or valid credentials found"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 443,
+        "username": "user",
+        "password": "password",
+        "success": false,
+        "message": "No active login endpoint or valid credentials found"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 443,
+        "username": "user",
+        "password": "secret",
+        "success": false,
+        "message": "No active login endpoint or valid credentials found"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 443,
+        "username": "user",
+        "password": "123456",
+        "success": false,
+        "message": "No active login endpoint or valid credentials found"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 443,
+        "username": "user",
+        "password": "admin123",
+        "success": false,
+        "message": "No active login endpoint or valid credentials found"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 443,
+        "username": "user",
+        "password": "welcome1",
+        "success": false,
+        "message": "No active login endpoint or valid credentials found"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 443,
+        "username": "test",
+        "password": "password",
+        "success": false,
+        "message": "No active login endpoint or valid credentials found"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 443,
+        "username": "test",
+        "password": "123456",
+        "success": false,
+        "message": "No active login endpoint or valid credentials found"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 443,
+        "username": "test",
+        "password": "admin123",
+        "success": false,
+        "message": "No active login endpoint or valid credentials found"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 443,
+        "username": "test",
+        "password": "welcome1",
+        "success": false,
+        "message": "No active login endpoint or valid credentials found"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 443,
+        "username": "test",
+        "password": "secret",
+        "success": false,
+        "message": "No active login endpoint or valid credentials found"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 443,
+        "username": "manager",
+        "password": "password",
+        "success": false,
+        "message": "No active login endpoint or valid credentials found"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 443,
+        "username": "manager",
+        "password": "123456",
+        "success": false,
+        "message": "No active login endpoint or valid credentials found"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 443,
+        "username": "manager",
+        "password": "admin123",
+        "success": false,
+        "message": "No active login endpoint or valid credentials found"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 443,
+        "username": "manager",
+        "password": "secret",
+        "success": false,
+        "message": "No active login endpoint or valid credentials found"
+    },
+    {
+        "target": "23.227.38.65",
+        "port": 443,
+        "username": "manager",
+        "password": "welcome1",
+        "success": false,
+        "message": "No active login endpoint or valid credentials found"
+    }
+]
