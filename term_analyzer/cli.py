@@ -1,3 +1,8 @@
+
+DEFAULT_COMMON_PASSWORDS = [
+    "admin", "password", "123456", "admin123", "root", 
+    "toor", "secret", "changeme", "password123", "12345"
+]
 from rich.console import Console
 from rich.progress import track, Progress, SpinnerColumn, TextColumn
 import asyncio
@@ -300,8 +305,9 @@ def main():
     parser.add_argument("--ext", help="Comma-separated file extensions to fuzz")
     parser.add_argument("--recursive", action="store_true", help="Recursively crawl discovered subdirectories")
     parser.add_argument("--audit", action="store_true", help="Audit discovered services for unauth access")
-    parser.add_argument("--spray", help="Candidate password for HTTP basic auth credential spray")
+    parser.add_argument("--spray", nargs="?", const="default", help="Candidate password or omit value for default common passwords wordlist")
     parser.add_argument("--passwords-file", help="Path to a password wordlist file for credential spraying")
+    parser.add_argument("--username", default="admin", help="Username or comma-separated usernames for credential spraying (default: admin)")
     parser.add_argument("--output", help="Save scan and finding results to an HTML report")
     parser.add_argument("--json", nargs="?", const="recon_report.json", help="Export scan data to a structured JSON file")
     parser.add_argument("--header", action="append", help="Custom HTTP header (e.g. --header 'Authorization: Bearer xyz')")
