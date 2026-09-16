@@ -6,6 +6,7 @@ import aiohttp
 from rich.console import Console
 from term_analyzer.spraying import load_payload_files, fuzz_advanced
 from term_analyzer.reporter import json_report, pretty_report, generate_html_report
+from term_analyzer.templates import run_template_scan
 
 console = Console()
 
@@ -70,14 +71,43 @@ async def run_intruder_async(args):
         
     pretty_report(report_data)
 
+async def run_template_async(args):
+    results = await run_template_scan(args.target, args.template, args.concurrency)
+    
+    formatted_results = []
+    for r in results:
+        if r["matched"]:
+            console.print(f"[bold green][MATCH] [{r['severity'].upper()}] {r['name']} -> {r['url']} (Status: {r['status_code']})[/bold green]")
+        else:
+            console.print(f"[dim][-] No match: {r['name']} -> {r['url']} (Status: {r['status_code']})[/dim]")
+            
+        formatted_results.append({
+            "payloads": [r["url"]],
+            "status_code": r["status_code"],
+            "response_length": len(r["response_snippet"]),
+            "response_snippet": r["response_snippet"]
+        })
+        
+    report_data = {
+        "mode": "template-scan",
+        "target": args.target,
+        "results": formatted_results
+    }
+    
+    if args.json_report:
+        json_report(report_data, args.json_report)
+    if args.html_report:
+        generate_html_report(report_data, args.html_report)
+
 def main():
     parser = argparse.ArgumentParser(description="Term Analyzer - Advanced Security Assessment Framework")
-    parser.add_argument("--target", type=str, default=None, help="Target URL or IP")
+    parser.add_argument("--target", type=str, default=None, help="Target URL or IP (Base URL for template scans)")
     parser.add_argument("--intruder", action="store_true", help="Enable Burp-style intruder mode")
     parser.add_argument("--intruder-mode", choices=["sniper", "pitchfork", "cluster"], default="sniper", help="Intruder attack mode")
     parser.add_argument("--payloads", type=str, default="payloads.txt", help="Path to payload file(s), comma-separated")
     parser.add_argument("--fuzz-url", type=str, help="URL template with §§ insertion points")
     parser.add_argument("--fuzz-body", type=str, default=None, help="POST/PUT body template with §§ insertion points")
+    parser.add_argument("--template", type=str, default=None, help="Path to YAML template file or directory")
     parser.add_argument("--method", type=str, default="GET", help="HTTP method")
     parser.add_argument("--concurrency", type=int, default=10, help="Max concurrent requests")
     parser.add_argument("--delay", type=float, default=0.0, help="Delay between requests")
@@ -92,6 +122,8 @@ def main():
     
     if args.intruder:
         asyncio.run(run_intruder_async(args))
+    elif args.template and args.target:
+        asyncio.run(run_template_async(args))
     else:
         parser.print_help()
 

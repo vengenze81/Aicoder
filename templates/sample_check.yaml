@@ -1,0 +1,17 @@
+id: test-endpoint-check
+info:
+  name: Sample Endpoint and Keyword Check
+  severity: low
+requests:
+  - method: GET
+    path: "/api/lookup?user=admin"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 404
+          - 200
+      - type: word
+        words:
+          - "Not Found"
+          - "admin"
