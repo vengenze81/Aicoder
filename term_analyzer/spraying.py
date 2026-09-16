@@ -66,19 +66,43 @@ def test_ftp_auth(host, port, username, password):
         return False, f"FTP Error: {e}"
 
 def test_http_auth(host, port, username, password, custom_headers=None):
-    scheme = "https" if port == 443 else "http"
-    url = f"{scheme}://{host}:{port}/"
-    headers = parse_headers(custom_headers)
-    try:
-        response = requests.get(url, auth=HTTPBasicAuth(username, password), headers=headers, timeout=3)
-        if response.status_code in [200, 302, 204]:
-            return True, f"HTTP Success (Status: {response.status_code})"
-        elif response.status_code == 401:
-            return False, "Unauthorized (401)"
-        else:
-            return False, f"Unexpected Status: {response.status_code}"
-    except requests.exceptions.RequestException as e:
-        return False, f"Connection Error: {e}"
+    """Tests HTTP/HTTPS authentication with browser headers and protocol fallback."""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+    }
+    if custom_headers:
+        headers.update(parse_headers(custom_headers))
+
+    # Automatically try HTTPS first if port is 443 or 8080, with HTTP fallback (or vice versa)
+    schemes = ["https", "http"] if port in [443, 8080] else ["http", "https"]
+    
+    last_error = ""
+    for scheme in schemes:
+        url = f"{scheme}://{host}:{port}/"
+        try:
+            # Disable SSL verification warnings for self-signed audit certificates
+            response = requests.get(url, auth=HTTPBasicAuth(username, password), headers=headers, timeout=3, allow_redirects=True, verify=False)
+            if response.status_code in [200, 302, 204]:
+                return True, f"HTTP Success ({scheme.upper()}) (Status: {response.status_code})"
+            elif response.status_code == 401:
+                return False, f"Unauthorized (401) on {scheme.upper()}"
+            else:
+                return False, f"Unexpected Status: {response.status_code} ({scheme.upper()})"
+        except requests.exceptions.SSLError:
+            last_error = "SSL Certificate Error"
+            continue
+        except requests.exceptions.ConnectionError:
+            last_error = f"Connection Dropped / Reset ({scheme.upper()})"
+            continue
+        except requests.exceptions.Timeout:
+            last_error = "Request Timeout"
+            continue
+        except Exception as e:
+            last_error = f"Error: {e}"
+            continue
+
+    return False, last_error or "Connection Aborted by Remote Host"
 
 def test_ssh_auth(host, port, username, password):
     if not PARAMIKO_AVAILABLE:
@@ -139,7 +163,7 @@ def perform_auth_check(target_host, port, username, password, custom_headers=Non
 
 def run_credential_spray(target_host, open_ports, user_arg=None, password_arg=None, user_file=None, password_file=None, max_threads=5, delay=0.0, custom_headers=None):
     """
-    Executes live multithreaded credential spraying including FTP support.
+    Executes live multithreaded credential spraying with smart HTTP handling.
     """
     results = []
     tasks = []
