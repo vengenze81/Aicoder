@@ -1,132 +1,119 @@
 from __future__ import annotations
-import abc
+
 import json
 import logging
 import re
 from pathlib import Path
-from typing import Any, Dict, List
-from .parser import ParsedLog, LogEntry
+from typing import Any, List, Mapping
+
+from .parser import ParsedLog
 
 log = logging.getLogger(__name__)
 
-class Rule(abc.ABC):
-    name: str
-    def __init__(self, *, dry_run: bool = True) -> None:
+class BaseRule:
+    def __init__(self, dry_run: bool = True) -> None:
         self.dry_run = dry_run
 
-    @abc.abstractmethod
-    def evaluate(self, parsed: ParsedLog) -> List[Dict[str, Any]]:
-        pass
+    def evaluate(self, parsed: ParsedLog) -> List[Mapping[str, Any]]:
+        raise NotImplementedError
 
-    def apply(self, suggestion: Dict[str, Any]) -> None:
-        if self.dry_run:
-            log.info("[DRY-RUN] %s – %s", self.name, json.dumps(suggestion))
-        else:
-            log.debug("[APPLY] %s – %s", self.name, json.dumps(suggestion))
+class TooManyErrorsRule(BaseRule):
+    """Detects if error log count exceeds a safety threshold."""
+    def evaluate(self, parsed: ParsedLog) -> List[Mapping[str, Any]]:
+        error_count = len(parsed.errors)
+        if error_count > 5:
+            return [{
+                "rule": "TooManyErrorsRule",
+                "severity": "high",
+                "message": f"Found {error_count} error entries in log stream.",
+                "action": "Investigate underlying error logs and stack traces."
+            }]
+        return []
 
-class TooManyErrorsRule(Rule):
-    name = "TooManyErrors"
-    THRESHOLD = 5
+class UnusedDepWarningRule(BaseRule):
+    """Detects unused dependency warnings in logs."""
+    def evaluate(self, parsed: ParsedLog) -> List[Mapping[str, Any]]:
+        suggestions = []
+        for entry in parsed.warnings:
+            if "unused dependency" in entry.raw.lower():
+                suggestions.append({
+                    "rule": "UnusedDepWarningRule",
+                    "severity": "low",
+                    "message": f"Unused dependency warning detected: {entry.raw}",
+                    "action": "Remove unused dependency from project configuration."
+                })
+        return suggestions
 
-    def evaluate(self, parsed: ParsedLog) -> List[Dict[str, Any]]:
-        count = len(parsed.errors)
-        if count <= self.THRESHOLD:
-            return []
-        suggestion = {
-            "rule": self.name,
-            "severity": "high",
-            "message": f"{count} errors detected (threshold={self.THRESHOLD})",
-            "action": "fail_ci",
-        }
-        self.apply(suggestion)
-        return [suggestion]
-
-class UnusedDepWarningRule(Rule):
-    name = "UnusedDepWarning"
-    _PATTERN = re.compile(r"unused\s+dependency", re.IGNORECASE)
-
-    def evaluate(self, parsed: ParsedLog) -> List[Dict[str, Any]]:
-        matches = [e for e in parsed.warnings if self._PATTERN.search(e.message)]
-        if not matches:
-            return []
-        suggestion = {
-            "rule": self.name,
-            "severity": "medium",
-            "message": f"Found {len(matches)} unused-dependency warnings",
-            "action": "run_dep_prune",
-        }
-        self.apply(suggestion)
-        return [suggestion]
-
-class ConfigFileFixRule(Rule):
-    name = "ConfigFileFix"
-    _MISSING_KEY_RE = re.compile(r"missing\s+config\s+key\s+([A-Za-z0-9_.-]+)", re.IGNORECASE)
-
-    def __init__(self, config_path: Path, *, dry_run: bool = True) -> None:
+class ConfigFileFixRule(BaseRule):
+    """Automatically patches or suggests fixes in configuration files."""
+    def __init__(self, config_path: Path, dry_run: bool = True) -> None:
         super().__init__(dry_run=dry_run)
         self.config_path = config_path
 
-    def evaluate(self, parsed: ParsedLog) -> List[Dict[str, Any]]:
+    def evaluate(self, parsed: ParsedLog) -> List[Mapping[str, Any]]:
         suggestions = []
-        for entry in parsed.errors:
-            m = self._MISSING_KEY_RE.search(entry.message)
-            if not m:
-                continue
-            key = m.group(1)
-            suggestion = {
-                "rule": self.name,
-                "severity": "low",
-                "message": f"Add default for missing config key `{key}`",
-                "action": "patch_config",
-                "key": key,
-                "default": self._default_for(key),
-            }
-            self.apply(suggestion)
-            suggestions.append(suggestion)
+        if not self.config_path.exists():
+            return suggestions
+
+        try:
+            content = self.config_path.read_text(encoding="utf-8")
+            if "debug = true" in content.lower():
+                suggestions.append({
+                    "rule": "ConfigFileFixRule",
+                    "severity": "medium",
+                    "message": f"Debug mode enabled in config file: {self.config_path}",
+                    "action": "Set debug = false for production deployment."
+                })
+        except Exception as exc:
+            log.error("Failed to read config file %s: %s", self.config_path, exc)
+
         return suggestions
 
-    @staticmethod
-    def _default_for(key: str) -> Any:
-        if key.lower().endswith("path"):
-            return "/tmp"
-        if key.lower().endswith("timeout"):
-            return 30
-        return ""
+class VulnerableServiceRule(BaseRule):
+    """Detects known vulnerable service versions using external JSON signatures."""
+    def __init__(self, dry_run: bool = True, sig_path: str | Path = "signatures.json") -> None:
+        super().__init__(dry_run=dry_run)
+        self.sig_path = Path(sig_path)
+        self.signatures = self._load_signatures()
 
-    def apply(self, suggestion: Dict[str, Any]) -> None:
-        if self.dry_run:
-            super().apply(suggestion)
-            return
+    def _load_signatures(self) -> List[dict]:
+        path = self.sig_path
+        if not path.exists():
+            # Fallback path relative to package root if not in cwd
+            alt_path = Path(__file__).parent.parent / "signatures.json"
+            if alt_path.exists():
+                path = alt_path
+            else:
+                log.warning("Signatures file not found at %s or %s", self.sig_path, alt_path)
+                return []
+        
         try:
-            data = json.loads(self.config_path.read_text())
-        except json.JSONDecodeError as exc:
-            log.error("Cannot parse config %s: %s", self.config_path, exc)
-            return
-        key = suggestion["key"]
-        data[key] = suggestion["default"]
-        self.config_path.write_text(json.dumps(data, indent=2))
-        log.info("Patched %s – set %s = %r", self.config_path, key, suggestion["default"])
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                log.info("Loaded %d vulnerability signatures from %s", len(data), path)
+                return data
+        except Exception as exc:
+            log.error("Failed to load signatures from %s: %s", path, exc)
+            return []
 
-class VulnerableServiceRule(Rule):
-    name = "VulnerableService"
-    
-    _VULN_PATTERNS = [
-        (re.compile(r"Apache[/\s](2\.4\.49|2\.4\.50)", re.IGNORECASE), "CVE-2021-41773: Apache Path Traversal"),
-        (re.compile(r"OpenSSH[_\s]([0-7]\.|8\.[01])", re.IGNORECASE), "Outdated OpenSSH version with potential vulnerabilities"),
-    ]
-
-    def evaluate(self, parsed: ParsedLog) -> List[Dict[str, Any]]:
+    def evaluate(self, parsed: ParsedLog) -> List[Mapping[str, Any]]:
         suggestions = []
-        for entry in parsed.all_entries():
-            for pattern, vuln_desc in self._VULN_PATTERNS:
-                if pattern.search(entry.message):
-                    suggestion = {
-                        "rule": self.name,
-                        "severity": "high",
-                        "message": f"Vulnerable service detected: {vuln_desc} found in message: '{entry.message}'",
-                        "action": "flag_security_risk",
-                    }
-                    self.apply(suggestion)
-                    suggestions.append(suggestion)
-                    break
+        all_entries = parsed.all_entries()
+
+        for sig in self.signatures:
+            pattern = sig.get("pattern")
+            if not pattern:
+                continue
+            
+            compiled_regex = re.compile(pattern, re.IGNORECASE)
+            for entry in all_entries:
+                if compiled_regex.search(entry.raw):
+                    suggestions.append({
+                        "rule": f"VulnerableServiceRule ({sig.get('id', 'CVE')})",
+                        "severity": sig.get("severity", "high"),
+                        "message": sig.get("message", "Vulnerable service detected."),
+                        "action": sig.get("action", "Update service immediately.")
+                    })
+                    break  # Trigger once per signature match
+
         return suggestions

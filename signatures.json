@@ -1,0 +1,18 @@
+[
+  {
+    "id": "CVE-2021-42013",
+    "service": "Apache",
+    "pattern": "Apache/2\\.4\\.(49|50)",
+    "severity": "high",
+    "message": "Outdated Apache version vulnerable to path traversal and remote code execution.",
+    "action": "Upgrade Apache immediately to version 2.4.51 or higher."
+  },
+  {
+    "id": "SSH-OUTDATED",
+    "service": "OpenSSH",
+    "pattern": "OpenSSH_[1-7]\\.",
+    "severity": "medium",
+    "message": "Outdated OpenSSH server version detected.",
+    "action": "Upgrade OpenSSH to the latest stable release."
+  }
+]
