@@ -25,7 +25,8 @@ class RuleEngine:
                         "rule_id": sig.get("id", "UNKNOWN"),
                         "service": sig.get("service", "Unknown"),
                         "severity": sig.get("severity", "info"),
-                        "message": sig.get("message", ""),
+                        "cvss": sig.get("cvss", "N/A"),
+                        "description": sig.get("description", ""),
                         "action": sig.get("action", "Review configuration."),
                         "matched_line": line
                     }

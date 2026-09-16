@@ -1,114 +1,47 @@
 [
-  {
-    "id": "CVE-2021-42013",
-    "service": "Apache",
-    "pattern": "Apache/2\\.4\\.(49|50)",
-    "severity": "high",
-    "message": "Outdated Apache version vulnerable to path traversal and remote code execution.",
-    "action": "Upgrade Apache immediately to version 2.4.51 or higher."
-  },
-  {
-    "id": "SSH-OUTDATED",
-    "service": "OpenSSH",
-    "pattern": "OpenSSH_[1-7]\\.",
-    "severity": "medium",
-    "message": "Outdated OpenSSH server version detected.",
-    "action": "Upgrade OpenSSH to the latest stable release."
-  },
-  {
-    "id": "VSFTPD-2.3.4-BACKDOOR",
-    "service": "vsftpd",
-    "pattern": "vsftpd\\s*2\\.3\\.[45]",
-    "severity": "high",
-    "message": "Potential vsftpd 2.3.4 backdoor vulnerability detected.",
-    "action": "Audit FTP daemon and upgrade to a secure, patched version of vsftpd."
-  },
-  {
-    "id": "NGINX-OUTDATED",
-    "service": "nginx",
-    "pattern": "nginx/1\\.[0-14]\\.",
-    "severity": "medium",
-    "message": "Outdated Nginx web server version detected.",
-    "action": "Upgrade Nginx to the latest stable release to patch known security flaws."
-  },
-  {
-    "id": "REDIS-EXPOSED",
-    "service": "Redis",
-    "pattern": "Redis server v=([0-6]\\.|7\\.0\\.)",
-    "severity": "high",
-    "message": "Potentially vulnerable or exposed Redis server version detected.",
-    "action": "Ensure Redis requires authentication (requirepass) and is not exposed directly to the public internet."
-  },
-  {
-    "id": "MYSQL-OUTDATED",
-    "service": "MySQL",
-    "pattern": "MySQL\\s*5\\.[567]\\.",
-    "severity": "medium",
-    "message": "End-of-life or legacy MySQL version detected.",
-    "action": "Upgrade MySQL to version 8.0 or higher."
-  },
-  {
-    "id": "DOCKER-API-EXPOSED",
-    "service": "Docker",
-    "pattern": "Docker/.*API",
-    "severity": "high",
-    "message": "Unauthenticated or exposed Docker Remote API detected.",
-    "action": "Restrict Docker socket access and protect port 2375/2376 with TLS or authentication."
-  },
-  {
-    "id": "ELASTICSEARCH-UNAUTH",
-    "service": "Elasticsearch",
-    "pattern": "cluster_name.*lucene_version",
-    "severity": "high",
-    "message": "Unprotected Elasticsearch instance exposed to reconnaissance.",
-    "action": "Enable X-Pack security, require authentication, and bind to localhost/internal networks only."
-  },
-  {
-    "id": "TELNET-CLEARTEXT",
-    "service": "Telnet",
-    "pattern": "login:|Password:",
-    "severity": "high",
-    "message": "Insecure cleartext Telnet service active.",
-    "action": "Disable Telnet immediately and migrate entirely to SSH."
-  },
-  {
-    "id": "REDIS-UNAUTH",
-    "service": "Redis",
-    "pattern": "redis_version",
-    "severity": "high",
-    "message": "Unauthenticated Redis caching service exposed to the network.",
-    "action": "Enable requirepass configuration, bind to localhost, and disable dangerous commands."
-  },
-  {
-    "id": "JENKINS-EXPOSED",
-    "service": "Jenkins",
-    "pattern": "X-Jenkins:|Jenkins CI",
-    "severity": "medium",
-    "message": "Exposed Jenkins automation server detected.",
-    "action": "Place behind a reverse proxy with strict authentication and disable anonymous read access."
-  },
-  {
-    "id": "TOMCAT-MANAGER",
-    "service": "Apache Tomcat",
-    "pattern": "Apache Tomcat.*Manager",
-    "severity": "high",
-    "message": "Apache Tomcat Manager application accessible.",
-    "action": "Restrict manager app access to trusted IP ranges and enforce strong credentials."
-  },
-  {
-    "id": "VSFTPD-BACKDOOR",
-    "service": "vsftpd",
-    "pattern": "vsFTPd 2.3.4",
-    "severity": "critical",
-    "message": "Potentially vulnerable vsFTPd 2.3.4 backdoor signature detected.",
-    "action": "Upgrade FTP server software immediately to a patched, secure version."
-  },
-  {
-    "id": "KUBELET-EXPOSED",
-    "service": "Kubernetes",
-    "pattern": "kubelet|pods",
-    "severity": "high",
-    "message": "Exposed Kubernetes Kubelet node API endpoint detected.",
-    "action": "Secure Kubelet port 10250 with mutual TLS and Webhook token authentication."
-  }
+    {
+        "id": "CVE-2021-44228",
+        "service": "Log4j",
+        "pattern": "log4j",
+        "severity": "high",
+        "cvss": "10.0",
+        "description": "Apache Log4j2 JNDI features do not protect against attacker controlled LDAP and other JNDI endpoints.",
+        "action": "Upgrade Log4j to version 2.15.0 or higher."
+    },
+    {
+        "id": "CVE-2023-38646",
+        "service": "Metabase",
+        "pattern": "metabase",
+        "severity": "high",
+        "cvss": "9.8",
+        "description": "Metabase remote code execution via pre-built setup database flaws.",
+        "action": "Upgrade Metabase to patched version."
+    },
+    {
+        "id": "CVE-2019-0232",
+        "service": "Apache Tomcat",
+        "pattern": "tomcat",
+        "severity": "medium",
+        "cvss": "7.5",
+        "description": "CGI Servlet Remote Code Execution vulnerability in Apache Tomcat.",
+        "action": "Disable CGI Servlet or upgrade Tomcat."
+    },
+    {
+        "id": "CVE-2022-22965",
+        "service": "Spring Framework",
+        "pattern": "spring",
+        "severity": "high",
+        "cvss": "9.8",
+        "description": "Spring4Shell: RCE via DataBinder in Spring MVC / Spring WebFlux on JDK 9+.",
+        "action": "Upgrade Spring Framework to 5.3.18+ or 5.2.20+."
+    },
+    {
+        "id": "DEFAULT-CONFIG-RISK",
+        "service": "General Web / Service",
+        "pattern": "directory listing",
+        "severity": "medium",
+        "cvss": "5.3",
+        "description": "Open directory listing exposes sensitive file structures and application source code.",
+        "action": "Disable autoindex / directory browsing in web server configuration."
+    }
 ]
