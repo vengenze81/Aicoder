@@ -90,13 +90,6 @@
             border-radius: 4px;
             font-family: monospace;
         }
-        .badge {
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: bold;
-        }
-        .badge.form { background: #7c3aed; color: #fff; }
         .no-findings {
             text-align: center;
             color: var(--text-muted);
@@ -130,14 +123,14 @@
             </div>
         </div>
 
-        <h2>Discovered Credentials</h2>
+        <h2>Discovered Credentials & Harvested Sessions</h2>
         <table>
             <thead>
                 <tr>
                     <th>Username</th>
                     <th>Password</th>
                     <th>Endpoint</th>
-                    <th>Type</th>
+                    <th>Harvested Session Cookies</th>
                     <th>Status</th>
                 </tr>
             </thead>
@@ -147,7 +140,7 @@
             <td><code>admin</code></td>
             <td><code>supersecret2026!</code></td>
             <td><a href="http://127.0.0.1:8080" target="_blank">http://127.0.0.1:8080</a></td>
-            <td><span class="badge form">FORM</span></td>
+            <td><code>N/A</code></td>
             <td><code>200</code></td>
         </tr>
         

