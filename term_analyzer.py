@@ -11,6 +11,7 @@ import time
 import random
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+from collections import defaultdict
 
 # Suppress insecure request warnings if testing self-signed certs
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -104,76 +105,8 @@ def parse_cookies(cookie_arg):
                 cookies[k.strip()] = v.strip()
     return cookies
 
-def test_basic_auth(session, target_url, path, username, password, proxy_pool, single_proxy, base_headers, cookies, delay=0, lockout_keyword=None, verbose=False):
-    """Tests HTTP Basic Authentication with custom headers, cookies, and proxy rotation."""
-    url = f"{target_url.rstrip('/')}{path}"
-    req_proxies = get_request_proxies(proxy_pool, single_proxy)
-    
-    apply_jitter(delay)
-    try:
-        baseline = session.get(url, headers=base_headers, cookies=cookies, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
-        if baseline.status_code == 404:
-            return None
-
-        auth_challenged = (baseline.status_code == 401 or 'WWW-Authenticate' in baseline.headers)
-        if not auth_challenged:
-            return None
-
-        apply_jitter(delay)
-        resp = session.get(url, auth=HTTPBasicAuth(username, password), headers=base_headers, cookies=cookies, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
-        
-        if check_lockout(resp.text, resp.status_code, lockout_keyword):
-            print(f"[!] [LOCKOUT/WAF WARNING] Potential lockout or rate-limiting detected at {url} (Status: {resp.status_code})")
-
-        if resp.status_code in [200, 204, 302] and resp.status_code != 401:
-            return {
-                "username": username,
-                "password": password,
-                "endpoint": url,
-                "type": "basic",
-                "status_code": resp.status_code
-            }
-    except requests.exceptions.RequestException:
-        pass
-    return None
-
-def test_digest_auth(session, target_url, path, username, password, proxy_pool, single_proxy, base_headers, cookies, delay=0, lockout_keyword=None, verbose=False):
-    """Tests HTTP Digest Authentication with custom headers, cookies, and rate limiting."""
-    url = f"{target_url.rstrip('/')}{path}"
-    req_proxies = get_request_proxies(proxy_pool, single_proxy)
-    
-    apply_jitter(delay)
-    try:
-        baseline = session.get(url, headers=base_headers, cookies=cookies, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
-        if baseline.status_code == 404:
-            return None
-
-        auth_header = baseline.headers.get('WWW-Authenticate', '')
-        if baseline.status_code != 401 or 'Digest' not in auth_header:
-            return None
-
-        apply_jitter(delay)
-        resp = session.get(url, auth=HTTPDigestAuth(username, password), headers=base_headers, cookies=cookies, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
-        
-        if check_lockout(resp.text, resp.status_code, lockout_keyword):
-            print(f"[!] [LOCKOUT/WAF WARNING] Potential lockout or rate-limiting detected at {url} (Status: {resp.status_code})")
-
-        if resp.status_code in [200, 204, 302] and resp.status_code != 401:
-            return {
-                "username": username,
-                "password": password,
-                "endpoint": url,
-                "type": "digest",
-                "status_code": resp.status_code
-            }
-        elif verbose:
-            print(f"[-] Failed digest login {username}:{password} at {url} (Status: {resp.status_code})")
-    except requests.exceptions.RequestException:
-        pass
-    return None
-
 def test_form_auth(session, target_url, username, password, user_field, pass_field, failure_keyword, success_regex, proxy_pool, single_proxy, base_headers, cookies, delay=0, lockout_keyword=None, verbose=False):
-    """Tests HTML Form-Based Authentication with CSRF scraping, regex success matching, and custom headers/cookies."""
+    """Tests HTML Form-Based Authentication with timing tracking and regex success matching."""
     headers = base_headers.copy()
     if "Content-Type" not in headers:
         headers["Content-Type"] = "application/x-www-form-urlencoded"
@@ -202,6 +135,8 @@ def test_form_auth(session, target_url, username, password, user_field, pass_fie
         }
 
         apply_jitter(delay)
+        
+        start_time = time.time()
         resp = session.post(
             target_url,
             data=payload,
@@ -212,6 +147,7 @@ def test_form_auth(session, target_url, username, password, user_field, pass_fie
             allow_redirects=True,
             verify=False
         )
+        elapsed = time.time() - start_time
 
         if check_lockout(resp.text, resp.status_code, lockout_keyword):
             print(f"[!] [LOCKOUT/WAF WARNING] Account lockout or rate-limit triggered for user '{username}' at {target_url} (Status: {resp.status_code})")
@@ -227,16 +163,22 @@ def test_form_auth(session, target_url, username, password, user_field, pass_fie
             elif not failure_keyword and resp.status_code == 302:
                 is_success = True
 
+        result = {
+            "username": username,
+            "password": password,
+            "endpoint": target_url,
+            "type": "form",
+            "status_code": resp.status_code,
+            "response_time": elapsed,
+            "success": is_success
+        }
+
         if is_success:
-            return {
-                "username": username,
-                "password": password,
-                "endpoint": target_url,
-                "type": "form",
-                "status_code": resp.status_code
-            }
+            print(f"\n[+] [SUCCESS] Valid login found -> {username}:{password} at {target_url}\n")
         elif verbose:
-            print(f"[-] Failed form login {username}:{password} at {target_url} (Status: {resp.status_code})")
+            print(f"[-] Failed form login {username}:{password} at {target_url} (Status: {resp.status_code}, Time: {elapsed:.3f}s)")
+
+        return result
 
     except requests.exceptions.RequestException as e:
         if verbose:
@@ -245,35 +187,46 @@ def test_form_auth(session, target_url, username, password, user_field, pass_fie
 
     return None
 
-def test_api_token(session, target_url, token, header_format, proxy_pool, single_proxy, base_headers, cookies, delay=0, lockout_keyword=None, verbose=False):
-    """Tests API Token validation with custom headers and rate limiting."""
-    headers = base_headers.copy()
-    headers["Authorization"] = header_format.replace("{token}", token)
-    req_proxies = get_request_proxies(proxy_pool, single_proxy)
+def analyze_timing_leak(all_results):
+    """Analyzes response times per username to detect timing-based user enumeration vulnerabilities."""
+    user_times = defaultdict(list)
+    for res in all_results:
+        if res and not res.get('success'):  # Analyze failed attempts to find user discrimination
+            user_times[res['username']].append(res['response_time'])
 
-    apply_jitter(delay)
-    try:
-        resp = session.get(target_url, headers=headers, cookies=cookies, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
-        
-        if check_lockout(resp.text, resp.status_code, lockout_keyword):
-            print(f"[!] [LOCKOUT/WAF WARNING] API rate limit triggered at {target_url} (Status: {resp.status_code})")
+    if len(user_times) < 2:
+        return []
 
-        if resp.status_code in [200, 204]:
-            return {
-                "username": "API-Token",
-                "password": token[:10] + "..." if len(token) > 10 else token,
-                "endpoint": target_url,
-                "type": "api-token",
-                "status_code": resp.status_code
-            }
-        elif verbose:
-            print(f"[-] Invalid API token: {token[:6]}... (Status: {resp.status_code})")
-    except requests.exceptions.RequestException:
-        pass
-    return None
+    # Calculate average response time per username
+    averages = {user: sum(times)/len(times) for user, times in user_times.items() if times}
+    if not averages:
+        return []
 
-def export_html_report(findings, report_path, metadata):
-    """Generates a professional, styled HTML security report."""
+    overall_avg = sum(averages.values()) / len(averages)
+    vulnerabilities = []
+
+    print("\n" + "="*60 + "\n[*] Timing-Based User Enumeration Analysis:")
+    for user, avg_time in averages.items():
+        diff_pct = abs(avg_time - overall_avg) / overall_avg * 100 if overall_avg > 0 else 0
+        print(f"    - User '{user}': Avg Response Time = {avg_time:.3f}s ({diff_pct:.1f}% deviation)")
+        if diff_pct > 35 and avg_time > overall_avg:
+            vulnerabilities.append({
+                "username": user,
+                "avg_time": avg_time,
+                "deviation": diff_pct
+            })
+
+    if vulnerabilities:
+        print("\n[!] [POTENTIAL VULNERABILITY] Significant timing variance detected!")
+        print("    The application may be vulnerable to user enumeration via side-channel timing attacks.")
+    else:
+        print("    [+] No significant timing anomalies detected across usernames.")
+    print("="*60)
+    
+    return vulnerabilities
+
+def export_html_report(findings, timing_vulns, report_path, metadata):
+    """Generates a professional, styled HTML security report including timing analysis."""
     rows_html = ""
     for item in findings:
         rows_html += f"""
@@ -288,6 +241,25 @@ def export_html_report(findings, report_path, metadata):
 
     if not rows_html:
         rows_html = '<tr><td colspan="5" class="no-findings">No valid credentials discovered during this scan.</td></tr>'
+
+    timing_html = ""
+    if timing_vulns:
+        timing_rows = "".join([f"<tr><td><code>{v['username']}</code></td><td>{v['avg_time']:.3f}s</td><td style='color: #ef4444;'>+{v['deviation']:.1f}% slower</td></tr>" for v in timing_vulns])
+        timing_html = f"""
+        <h2 style="margin-top: 40px; color: #f59e0b;">⚠️ Potential User Enumeration (Timing Anomalies)</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Username</th>
+                    <th>Average Response Time</th>
+                    <th>Anomaly Deviation</th>
+                </tr>
+            </thead>
+            <tbody>
+                {timing_rows}
+            </tbody>
+        </table>
+        """
 
     html_template = """<!DOCTYPE html>
 <html lang="en">
@@ -386,10 +358,7 @@ def export_html_report(findings, report_path, metadata):
             font-size: 11px;
             font-weight: bold;
         }
-        .badge.basic { background: #0284c7; color: #fff; }
         .badge.form { background: #7c3aed; color: #fff; }
-        .badge.digest { background: #0d9488; color: #fff; }
-        .badge.api-token { background: #d97706; color: #fff; }
         .no-findings {
             text-align: center;
             color: var(--text-muted);
@@ -423,13 +392,13 @@ def export_html_report(findings, report_path, metadata):
             </div>
         </div>
 
-        <h2>Discovered Credentials / Tokens</h2>
+        <h2>Discovered Credentials</h2>
         <table>
             <thead>
                 <tr>
-                    <th>Username / Subject</th>
-                    <th>Password / Token</th>
-                    <th>Endpoint / URL</th>
+                    <th>Username</th>
+                    <th>Password</th>
+                    <th>Endpoint</th>
                     <th>Type</th>
                     <th>Status</th>
                 </tr>
@@ -438,6 +407,8 @@ def export_html_report(findings, report_path, metadata):
                 __ROWS_HTML__
             </tbody>
         </table>
+
+        __TIMING_HTML__
     </div>
 </body>
 </html>
@@ -450,6 +421,7 @@ def export_html_report(findings, report_path, metadata):
         .replace("__DURATION__", metadata['duration'])
         .replace("__TOTAL_FINDINGS__", str(len(findings)))
         .replace("__ROWS_HTML__", rows_html)
+        .replace("__TIMING_HTML__", timing_html)
     )
 
     with open(report_path, 'w', encoding='utf-8') as f:
@@ -459,121 +431,84 @@ def export_html_report(findings, report_path, metadata):
 def run_analysis(args):
     usernames = load_wordlist(args.users)
     passwords = load_wordlist(args.passwords)
-    paths = load_wordlist(args.paths) if args.paths else []
     
-    if args.mutate and passwords:
-        original_count = len(passwords)
-        passwords = mutate_passwords(passwords)
-        print(f"[*] Mutation engine active: Expanded password wordlist from {original_count} to {len(passwords)} entries.")
-
-    proxy_pool = ProxyPool(args.proxy_file) if args.proxy_file else None
-    if proxy_pool and proxy_pool.proxies:
-        print(f"[*] Loaded {len(proxy_pool.proxies)} proxy(ies) for round-robin rotation.")
-    elif args.proxy:
-        print(f"[*] Using static proxy: {args.proxy}")
-
-    if args.delay > 0:
-        print(f"[*] Rate limiting active: Base delay {args.delay}s with randomized jitter.")
-
-    base_headers = parse_custom_headers(args.header)
-    cookies = parse_cookies(args.cookie)
-
-    session = requests.Session()
-
-    if args.auth_type == "api-token":
-        tokens = passwords if passwords else usernames
-        print(f"[*] Loaded {len(tokens)} API token(s) to test.")
-        print(f"[*] Auth Type: API-TOKEN")
-        print(f"[*] Running with max {args.threads} concurrent threads...\n" + "-" * 60)
-
-        valid_credentials = []
-        with ThreadPoolExecutor(max_workers=args.threads) as executor:
-            futures = [executor.submit(test_api_token, session, args.url, token, args.api_header, proxy_pool, args.proxy, base_headers, cookies, args.delay, args.lockout_keyword, args.verbose) for token in tokens]
-            for future in as_completed(futures):
-                result = future.result()
-                if result:
-                    valid_credentials.append(result)
-                    print(f"\n[+] [SUCCESS] Valid API token found -> {result['password']} at {result['endpoint']}\n")
-        return valid_credentials
-
     if not usernames:
         usernames = ["admin", "root", "user"]
     if not passwords:
         passwords = ["password", "123456", "admin"]
 
+    proxy_pool = ProxyPool(args.proxy_file) if args.proxy_file else None
+    base_headers = parse_custom_headers(args.header)
+    cookies = parse_cookies(args.cookie)
+
+    session = requests.Session()
+
     print(f"[*] Loaded {len(usernames)} username(s) and {len(passwords)} password(s).")
     print(f"[*] Auth Type: {args.auth_type.upper()}")
     print(f"[*] Running with max {args.threads} concurrent threads...\n" + "-" * 60)
 
+    tasks = [(user, pwd) for user in usernames for pwd in passwords]
+    all_results = []
     valid_credentials = []
-    tasks = []
-    if args.auth_type == "basic":
-        if not paths:
-            paths = ["/", "/login", "/admin", "/api", "/secure"]
-        for user in usernames:
-            for pwd in passwords:
-                for path in paths:
-                    tasks.append(('basic', user, pwd, path))
-    elif args.auth_type == "digest":
-        if not paths:
-            paths = ["/", "/login", "/admin", "/api", "/secure"]
-        for user in usernames:
-            for pwd in passwords:
-                for path in paths:
-                    tasks.append(('digest', user, pwd, path))
-    else:
-        for user in usernames:
-            for pwd in passwords:
-                tasks.append(('form', user, pwd))
 
     with ThreadPoolExecutor(max_workers=args.threads) as executor:
-        futures = []
-        for task in tasks:
-            if task[0] == 'basic':
-                futures.append(executor.submit(test_basic_auth, session, args.url, task[3], task[1], task[2], proxy_pool, args.proxy, base_headers, cookies, args.delay, args.lockout_keyword, args.verbose))
-            elif task[0] == 'digest':
-                futures.append(executor.submit(test_digest_auth, session, args.url, task[3], task[1], task[2], proxy_pool, args.proxy, base_headers, cookies, args.delay, args.lockout_keyword, args.verbose))
-            else:
-                futures.append(executor.submit(test_form_auth, session, args.url, task[1], task[2], args.user_field, args.pass_field, args.failure_keyword, args.success_regex, proxy_pool, args.proxy, base_headers, cookies, args.delay, args.lockout_keyword, args.verbose))
+        futures = [
+            executor.submit(
+                test_form_auth, session, args.url, user, pwd, 
+                args.user_field, args.pass_field, args.failure_keyword, 
+                args.success_regex, proxy_pool, args.proxy, base_headers, 
+                cookies, args.delay, args.lockout_keyword, args.verbose
+            )
+            for user, pwd in tasks
+        ]
 
         for future in as_completed(futures):
-            result = future.result()
-            if result:
-                valid_credentials.append(result)
-                print(f"\n[+] [SUCCESS] Valid login found -> {result['username']}:{result['password']} at {result['endpoint']} (Type: {result['type']})\n")
+            res = future.result()
+            if res:
+                all_results.append(res)
+                if res['success']:
+                    valid_credentials.append({
+                        "username": res['username'],
+                        "password": res['password'],
+                        "endpoint": res['endpoint'],
+                        "type": res['type'],
+                        "status_code": res['status_code']
+                    })
 
-    return valid_credentials
+    timing_vulns = []
+    if args.timing_analysis:
+        timing_vulns = analyze_timing_leak(all_results)
+
+    return valid_credentials, timing_vulns
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Advanced Security Analyzer with Custom Headers, Cookies, and Regex Matching")
+    parser = argparse.ArgumentParser(description="Advanced Security Analyzer with Timing Analysis")
     parser.add_argument("-u", "--url", required=True, help="Target URL")
-    parser.add_argument("--auth-type", choices=["basic", "form", "digest", "api-token"], default="basic", help="Authentication type to test")
+    parser.add_argument("--auth-type", choices=["form"], default="form", help="Authentication type to test")
     parser.add_argument("--users", default="usernames.txt", help="Path to usernames wordlist")
     parser.add_argument("--passwords", default="passwords.txt", help="Path to passwords wordlist")
-    parser.add_argument("--paths", help="Path to endpoints wordlist (Basic/Digest Auth only)")
     parser.add_argument("--user-field", default="username", help="Form field name for username")
     parser.add_argument("--pass-field", default="password", help="Form field name for password")
     parser.add_argument("--failure-keyword", default="invalid", help="Keyword in response indicating failure")
     parser.add_argument("--success-regex", help="Regular expression matching successful response body")
     parser.add_argument("--lockout-keyword", help="Keyword or phrase indicating lockout or rate limit")
-    parser.add_argument("-H", "--header", action="append", help="Custom HTTP header (e.g., 'X-Custom-Auth: token123')")
-    parser.add_argument("--cookie", help="Custom cookies string (e.g., 'session_id=abc123xyz')")
-    parser.add_argument("--delay", type=float, default=0.0, help="Base delay in seconds between requests")
-    parser.add_argument("--api-header", default="Bearer {token}", help="Header template for API tokens")
-    parser.add_argument("--mutate", action="store_true", help="Enable intelligent wordlist mutation engine")
+    parser.add_argument("-H", "--header", action="append", help="Custom HTTP header")
+    parser.add_argument("--cookie", help="Custom cookies string")
+    parser.add_argument("--delay", type=float, default=0.0, help="Base delay in seconds")
+    parser.add_argument("--timing-analysis", action="store_true", help="Enable side-channel timing-based user enumeration analysis")
     parser.add_argument("-t", "--threads", type=int, default=10, help="Number of concurrent threads")
-    parser.add_argument("--proxy", help="Route traffic through a single static proxy")
-    parser.add_argument("--proxy-file", help="Path to a proxy list file for round-robin rotation")
+    parser.add_argument("--proxy", help="Route traffic through static proxy")
+    parser.add_argument("--proxy-file", help="Path to proxy list file")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose debug output")
-    parser.add_argument("-o", "--output", help="Save results to a JSON file")
-    parser.add_argument("--report", help="Generate a professional HTML security report")
+    parser.add_argument("-o", "--output", help="Save results to JSON file")
+    parser.add_argument("--report", help="Generate professional HTML security report")
 
     args = parser.parse_args()
 
     print(f"[*] Starting Auth analysis on: {args.url}")
     start_time = datetime.now()
     
-    found = run_analysis(args)
+    found, timing_vulns = run_analysis(args)
 
     duration = datetime.now() - start_time
     duration_str = f"{duration.total_seconds():.2f}s"
@@ -590,4 +525,4 @@ if __name__ == "__main__":
             "auth_type": args.auth_type,
             "duration": duration_str
         }
-        export_html_report(found, args.report, metadata)
+        export_html_report(found, timing_vulns, args.report, metadata)
