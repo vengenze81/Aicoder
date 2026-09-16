@@ -14,5 +14,37 @@
     "severity": "medium",
     "message": "Outdated OpenSSH server version detected.",
     "action": "Upgrade OpenSSH to the latest stable release."
+  },
+  {
+    "id": "VSFTPD-2.3.4-BACKDOOR",
+    "service": "vsftpd",
+    "pattern": "vsftpd\\s*2\\.3\\.[45]",
+    "severity": "high",
+    "message": "Potential vsftpd 2.3.4 backdoor vulnerability detected.",
+    "action": "Audit FTP daemon and upgrade to a secure, patched version of vsftpd."
+  },
+  {
+    "id": "NGINX-OUTDATED",
+    "service": "nginx",
+    "pattern": "nginx/1\\.[0-14]\\.",
+    "severity": "medium",
+    "message": "Outdated Nginx web server version detected.",
+    "action": "Upgrade Nginx to the latest stable release to patch known security flaws."
+  },
+  {
+    "id": "REDIS-EXPOSED",
+    "service": "Redis",
+    "pattern": "Redis server v=([0-6]\\.|7\\.0\\.)",
+    "severity": "high",
+    "message": "Potentially vulnerable or exposed Redis server version detected.",
+    "action": "Ensure Redis requires authentication (requirepass) and is not exposed directly to the public internet."
+  },
+  {
+    "id": "MYSQL-OUTDATED",
+    "service": "MySQL",
+    "pattern": "MySQL\\s*5\\.[567]\\.",
+    "severity": "medium",
+    "message": "End-of-life or legacy MySQL version detected.",
+    "action": "Upgrade MySQL to version 8.0 or higher."
   }
 ]

@@ -39,12 +39,17 @@ def test_config_file_fix_rule(tmp_path: Path):
 
 def test_vulnerable_service_rule():
     parsed = ParsedLog(
-        infos=[LogEntry(raw="info: Discovered banner: Server: Apache/2.4.49 (Unix)", kind="info")]
+        infos=[
+            LogEntry(raw="info: Discovered banner: Server: Apache/2.4.49 (Unix)", kind="info"),
+            LogEntry(raw="info: Discovered banner: vsftpd 2.3.4", kind="info")
+        ]
     )
     rule = VulnerableServiceRule(dry_run=True)
     suggestions = rule.evaluate(parsed)
-    assert len(suggestions) == 1
-    assert "VulnerableServiceRule" in suggestions[0]["rule"]
+    assert len(suggestions) == 2
+    rules_triggered = [s["rule"] for s in suggestions]
+    assert any("CVE-2021-42013" in r for r in rules_triggered)
+    assert any("VSFTPD-2.3.4-BACKDOOR" in r for r in rules_triggered)
 
 def test_cli_scan_integration(monkeypatch):
     from term_analyzer.cli import main
