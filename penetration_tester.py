@@ -71,6 +71,7 @@ class PenetrationTester:
         self.max_threads = max_threads
         self.socket_timeout = socket_timeout
         self.probe = probe
+        self.max_concurrency = 100
 
         try:
             self.addr_info = socket.getaddrinfo(
