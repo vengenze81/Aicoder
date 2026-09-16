@@ -113,35 +113,129 @@ def extract_csrf_token(html_content, csrf_field_name):
     if BS4_AVAILABLE:
         try:
             soup = BeautifulSoup(html_content, 'html.parser')
-            # Search by name attribute in input fields
             inp = soup.find('input', {'name': csrf_field_name})
             if inp and inp.get('value'):
                 return inp.get('value')
             
-            # Search meta tags as alternative
             meta = soup.find('meta', {'name': csrf_field_name})
             if meta and meta.get('content'):
                 return meta.get('content')
             
-            # Fuzzy match fallback for inputs containing csrf or token in name
             for tag in soup.find_all('input', {'name': re.compile(r'csrf|token', re.I)}):
                 if tag.get('value'):
                     return tag.get('value')
         except Exception:
             pass
 
-    # Regex fallback if BeautifulSoup fails or is unavailable
     pattern = rf'<input[^>]+name=["\']?{csrf_field_name}["\']?[^>]+value=["\']?([^"\']+)["\']?'
     match = re.search(pattern, html_content, re.IGNORECASE)
     if match:
         token = match.group(1)
     else:
-        # Generic fallback pattern
         generic_match = re.search(r'<input[^>]+value=["\']?([^"\']+)["\']?[^>]+name=["\']?.*?(?:csrf|token).*?["\']?', html_content, re.IGNORECASE)
         if generic_match:
             token = generic_match.group(1)
             
     return token
+
+def test_user_existence(session, target_url, username, auth_type, content_type, user_field, pass_field, proxy_pool, single_proxy, base_headers, cookies, extract_csrf, csrf_field, probe_password, delay, verbose):
+    """Probes a single username with a dummy password to check for account existence via differential response analysis."""
+    headers = base_headers.copy()
+    req_proxies = get_request_proxies(proxy_pool, single_proxy)
+    apply_jitter(delay)
+
+    start_time = time.time()
+    try:
+        if auth_type == "form":
+            hidden_inputs = {}
+            csrf_token = None
+
+            get_resp = session.get(target_url, headers=headers, cookies=cookies, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
+            if get_resp.status_code == 200:
+                if extract_csrf:
+                    csrf_token = extract_csrf_token(get_resp.text, csrf_field)
+                matches = re.findall(r'<input[^>]+type=["\']?hidden["\']?[^>]*>', get_resp.text, re.IGNORECASE)
+                for m in matches:
+                    name_match = re.search(r'name=["\']?([^"\']+)["\']?', m, re.IGNORECASE)
+                    val_match = re.search(r'value=["\']?([^"\']*)["\']?', m, re.IGNORECASE)
+                    if name_match:
+                        hidden_inputs[name_match.group(1)] = val_match.group(1) if val_match else ""
+
+            if csrf_token:
+                hidden_inputs[csrf_field] = csrf_token
+
+            if content_type == "json":
+                headers["Content-Type"] = "application/json"
+                payload = json.dumps({user_field: username, pass_field: probe_password, **hidden_inputs})
+                resp = session.post(target_url, data=payload, headers=headers, cookies=cookies, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
+            else:
+                if "Content-Type" not in headers:
+                    headers["Content-Type"] = "application/x-www-form-urlencoded"
+                payload = {user_field: username, pass_field: probe_password, **hidden_inputs}
+                resp = session.post(target_url, data=payload, headers=headers, cookies=cookies, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
+
+            elapsed = time.time() - start_time
+            return {
+                "username": username,
+                "status_code": resp.status_code if resp else 0,
+                "response_length": len(resp.content) if resp else 0,
+                "response_text": resp.text if resp else "",
+                "response_time": elapsed
+            }
+    except requests.exceptions.RequestException as e:
+        if verbose:
+            print(f"[!] Enum request exception for user {username}: {e}")
+    return None
+
+def run_user_enumeration(session, target_url, usernames, auth_type, content_type, user_field, pass_field, proxy_pool, single_proxy, base_headers, cookies, extract_csrf, csrf_field, probe_password, delay, threads, verbose):
+    """Runs differential user enumeration across all usernames in the wordlist."""
+    print("\n" + "="*60 + "\n[*] Starting Dedicated Account Enumeration Phase:")
+    print(f"    - Probing {len(usernames)} username(s) with dummy password...")
+
+    results = []
+    with ThreadPoolExecutor(max_workers=threads) as executor:
+        futures = [
+            executor.submit(
+                test_user_existence, session, target_url, user, auth_type, content_type,
+                user_field, pass_field, proxy_pool, single_proxy, base_headers, cookies,
+                extract_csrf, csrf_field, probe_password, delay, verbose
+            )
+            for user in usernames
+        ]
+        for f in as_completed(futures):
+            res = f.result()
+            if res:
+                results.append(res)
+
+    if not results:
+        print("    [-] User enumeration returned no results.")
+        print("="*60)
+        return []
+
+    # Cluster response lengths and texts to find anomalies (potential valid users)
+    lengths = [r['response_length'] for r in results]
+    length_counts = Counter(lengths)
+    baseline_length, baseline_count = length_counts.most_common(1)[0]
+
+    valid_users = []
+    print(f"    - Baseline Failure Response Length: {baseline_length} bytes ({baseline_count} occurrences)")
+
+    for r in results:
+        l = r['response_length']
+        # If length differs from statistical baseline or status code differs
+        if l != baseline_length:
+            diff = abs(l - baseline_length)
+            print(f"    [+] [POTENTIAL VALID USER] '{r['username']}' -> Length: {l}B (Diff: {diff:+d}B, Status: {r['status_code']})")
+            valid_users.append(r['username'])
+        elif verbose:
+            print(f"    [-] Checked '{r['username']}' -> Length: {l}B (Matches baseline)")
+
+    if not valid_users:
+        print("    [+] All usernames produced identical responses (strong anti-enumeration defenses).")
+    else:
+        print(f"\n[+] Enumeration Complete. Discovered {len(valid_users)} potential valid account(s).")
+    print("="*60)
+    return valid_users
 
 def test_auth(session, target_url, username, password, auth_type, content_type, user_field, pass_field, failure_keyword, success_regex, proxy_pool, single_proxy, base_headers, cookies, circuit_breaker, extract_csrf=False, csrf_field="csrf_token", delay=0, lockout_keyword=None, verbose=False):
     """Handles authentication testing with optional dynamic CSRF token extraction and circuit breaker protection."""
@@ -161,7 +255,6 @@ def test_auth(session, target_url, username, password, auth_type, content_type, 
             hidden_inputs = {}
             csrf_token = None
 
-            # Always perform a GET request first if hidden inputs or CSRF extraction is requested
             get_resp = session.get(target_url, headers=headers, cookies=cookies, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
             
             if get_resp.status_code == 200:
@@ -173,32 +266,20 @@ def test_auth(session, target_url, username, password, auth_type, content_type, 
                     name_match = re.search(r'name=["\']?([^"\']+)["\']?', m, re.IGNORECASE)
                     val_match = re.search(r'value=["\']?([^"\']*)["\']?', m, re.IGNORECASE)
                     if name_match:
-                        name = name_match.group(1)
-                        val = val_match.group(1) if val_match else ""
-                        hidden_inputs[name] = val
+                        hidden_inputs[name_match.group(1)] = val_match.group(1) if val_match else ""
 
             if csrf_token:
                 hidden_inputs[csrf_field] = csrf_token
 
             if content_type == "json":
                 headers["Content-Type"] = "application/json"
-                payload_dict = {
-                    user_field: username,
-                    pass_field: password,
-                    **hidden_inputs
-                }
-                payload = json.dumps(payload_dict)
+                payload = json.dumps({user_field: username, pass_field: password, **hidden_inputs})
                 resp = session.post(target_url, data=payload, headers=headers, cookies=cookies, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
             else:
                 if "Content-Type" not in headers:
                     headers["Content-Type"] = "application/x-www-form-urlencoded"
 
-                payload = {
-                    user_field: username,
-                    pass_field: password,
-                    **hidden_inputs
-                }
-
+                payload = {user_field: username, pass_field: password, **hidden_inputs}
                 apply_jitter(delay)
                 resp = session.post(
                     target_url, data=payload, headers=headers, cookies=cookies,
@@ -259,8 +340,7 @@ def test_auth(session, target_url, username, password, auth_type, content_type, 
             if captured_headers:
                 print(f"    [+] Harvested Auth Headers: {captured_headers}\n")
         elif verbose:
-            csrf_status = f" | CSRF: Found" if (extract_csrf and 'csrf_token' in locals() and csrf_token) else ""
-            print(f"[-] Failed {auth_type} login {username}:{password} at {target_url} (Status: {status_code}, Length: {resp_length}B{csrf_status})")
+            print(f"[-] Failed {auth_type} login {username}:{password} at {target_url} (Status: {status_code}, Length: {resp_length}B)")
 
         return result
 
@@ -577,8 +657,18 @@ def run_analysis(args):
     session = requests.Session()
 
     print(f"[*] Loaded {len(usernames)} username(s) and {len(passwords)} password(s).")
-    print(f"[*] Auth Type: {args.auth_type.upper()} | Content-Type: {args.content_type.upper()}" + (f" | CSRF Extraction: Enabled ({args.csrf_field})" if args.extract_csrf else ""))
-    print(f"[*] Running with max {args.threads} concurrent threads...\n" + "-" * 60)
+    print(f"[*] Auth Type: {args.auth_type.upper()} | Content-Type: {args.content_type.upper()}")
+
+    # Run dedicated user enumeration phase if requested
+    if args.enum_users:
+        run_user_enumeration(
+            session, args.url, usernames, args.auth_type, args.content_type,
+            args.user_field, args.pass_field, proxy_pool, args.proxy, base_headers,
+            cookies, args.extract_csrf, args.csrf_field, args.probe_password,
+            args.delay, args.threads, args.verbose
+        )
+
+    print(f"[*] Running password audit with max {args.threads} concurrent threads...\n" + "-" * 60)
 
     tasks = [(user, pwd) for user in usernames for pwd in passwords]
     all_results = []
@@ -627,12 +717,14 @@ def run_analysis(args):
     return valid_credentials, timing_vulns, length_outliers
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Advanced Security Analyzer with Dynamic CSRF Extraction")
+    parser = argparse.ArgumentParser(description="Advanced Security Analyzer with User Enumeration Mode")
     parser.add_argument("-u", "--url", required=True, help="Target URL")
     parser.add_argument("--auth-type", choices=["form", "basic", "digest"], default="form", help="Authentication type to test")
     parser.add_argument("--content-type", choices=["form", "json"], default="form", help="Payload content type for form/API auth")
     parser.add_argument("--extract-csrf", action="store_true", help="Automatically scrape and inject anti-CSRF token")
     parser.add_argument("--csrf-field", default="csrf_token", help="Name of the form/JSON field for CSRF token")
+    parser.add_argument("--enum-users", action="store_true", help="Enable dedicated account enumeration mode")
+    parser.add_argument("--probe-password", default="invalidprobe12345!", help="Dummy password used during user enumeration probe")
     parser.add_argument("--users", default="usernames.txt", help="Path to usernames wordlist")
     parser.add_argument("--passwords", default="passwords.txt", help="Path to passwords wordlist")
     parser.add_argument("--user-field", default="username", help="Payload field name for username")
