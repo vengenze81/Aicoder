@@ -4,6 +4,7 @@ from term_analyzer.defaults import get_defaults_for_port
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 import os
+import time
 
 try:
     import paramiko
@@ -36,11 +37,23 @@ def load_wordlist(file_path):
         print(f"[-] Error reading wordlist {file_path}: {e}")
         return []
 
-def test_http_auth(host, port, username, password):
+def parse_headers(header_args):
+    """Parses a list of key:value header strings into a dictionary."""
+    headers = {}
+    if not header_args:
+        return headers
+    for h in header_args:
+        if ":" in h:
+            key, val = h.split(":", 1)
+            headers[key.strip()] = val.strip()
+    return headers
+
+def test_http_auth(host, port, username, password, custom_headers=None):
     scheme = "https" if port == 443 else "http"
     url = f"{scheme}://{host}:{port}/"
+    headers = parse_headers(custom_headers)
     try:
-        response = requests.get(url, auth=HTTPBasicAuth(username, password), timeout=3)
+        response = requests.get(url, auth=HTTPBasicAuth(username, password), headers=headers, timeout=3)
         if response.status_code in [200, 302, 204]:
             return True, f"HTTP Success (Status: {response.status_code})"
         elif response.status_code == 401:
@@ -93,11 +106,11 @@ def test_postgresql_auth(host, port, username, password):
             return False, "Authentication Failed"
         return False, f"PostgreSQL Error: {err_msg}"
 
-def perform_auth_check(target_host, port, username, password):
+def perform_auth_check(target_host, port, username, password, custom_headers=None):
     if port == 22:
         return test_ssh_auth(target_host, port, username, password)
     elif port in [80, 443, 8080]:
-        return test_http_auth(target_host, port, username, password)
+        return test_http_auth(target_host, port, username, password, custom_headers=custom_headers)
     elif port == 3306:
         return test_mysql_auth(target_host, port, username, password)
     elif port == 5432:
@@ -105,15 +118,14 @@ def perform_auth_check(target_host, port, username, password):
     else:
         return False, "Service protocol handler not implemented yet"
 
-def run_credential_spray(target_host, open_ports, user_arg=None, password_arg=None, user_file=None, password_file=None, max_threads=5):
+def run_credential_spray(target_host, open_ports, user_arg=None, password_arg=None, user_file=None, password_file=None, max_threads=5, delay=0.0, custom_headers=None):
     """
-    Executes live multithreaded credential spraying using defaults, CLI args, or wordlist files.
+    Executes live multithreaded credential spraying with delay and custom headers.
     """
     results = []
     tasks = []
 
     for port in open_ports:
-        # Resolve usernames
         file_users = load_wordlist(user_file)
         if file_users:
             usernames = file_users
@@ -122,7 +134,6 @@ def run_credential_spray(target_host, open_ports, user_arg=None, password_arg=No
         else:
             usernames = [u for u, _ in get_defaults_for_port(port)]
 
-        # Resolve passwords
         file_passwords = load_wordlist(password_file)
         if file_passwords:
             passwords = file_passwords
@@ -138,7 +149,9 @@ def run_credential_spray(target_host, open_ports, user_arg=None, password_arg=No
             tasks.append((port, username, password))
 
     def worker(port, username, password):
-        success, msg = perform_auth_check(target_host, port, username, password)
+        if delay > 0:
+            time.sleep(delay)
+        success, msg = perform_auth_check(target_host, port, username, password, custom_headers=custom_headers)
         with print_lock:
             if success:
                 print(f"[*] Testing {username}:{password} on {target_host}:{port}... \033[92m[SUCCESS] {msg}\033[0m")
@@ -153,7 +166,7 @@ def run_credential_spray(target_host, open_ports, user_arg=None, password_arg=No
             "message": msg
         }
 
-    print(f"[*] Starting multithreaded spray across {len(tasks)} total checks using {max_threads} threads...")
+    print(f"[*] Starting multithreaded spray across {len(tasks)} total checks using {max_threads} threads (Delay: {delay}s)...")
     with ThreadPoolExecutor(max_workers=max_threads) as executor:
         futures = {executor.submit(worker, port, u, p): (port, u, p) for port, u, p in tasks}
         for future in as_completed(futures):
