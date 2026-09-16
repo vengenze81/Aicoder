@@ -78,11 +78,13 @@ class DatabaseManager:
             cursor.execute('SELECT url, status, size FROM fuzz_hits WHERE scan_id = ?', (scan_id,))
             fuzz_hits = [dict(r) for r in cursor.fetchall()]
 
-            return {
+            res = {
                 "timestamp": timestamp,
                 "ports": ports,
                 "fuzz_hits": fuzz_hits
             }
+        if isinstance(res, dict): res["target"] = target
+        return res
 
     def get_all_scans(self, limit: int = 15):
         with sqlite3.connect(self.db_path) as conn:

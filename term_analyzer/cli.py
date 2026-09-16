@@ -1,3 +1,5 @@
+from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, TextColumn
 import asyncio
 import argparse
 import logging
@@ -65,9 +67,9 @@ async def run_scan_on_target(target: str, ports_str: str, fuzz: bool = False, au
     open_ports = await tester.scan_ports(ports)
 
     print(f"\n Reconnaissance Results & CVE Audit for {target}")
-    print("┏━━━━━━━━━━━━━━━━┳━━━━━━┳━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━┓")
-    print("┃ Host           ┃ Port ┃ Status ┃ Auth / Access Audit ┃")
-    print("┡━━━━━━━━━━━━━━━━╇━━━━━━╇━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━┩")
+    console.print("┏━━━━━━━━━━━━━━━━┳━━━━━━┳━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━┓")
+    console.print("┃ Host           ┃ Port ┃ Status ┃ Auth / Access Audit ┃")
+    console.print("┡━━━━━━━━━━━━━━━━╇━━━━━━╇━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━┩")
     
     scan_results_data = []
     for p in ports:
@@ -87,7 +89,7 @@ async def run_scan_on_target(target: str, ports_str: str, fuzz: bool = False, au
         print(f"│ {target:<14} │ {p:<4} │ {status:<6} │ {audit_status:<19} │")
         scan_results_data.append({"port": p, "status": status, "audit": audit_status})
 
-    print("└────────────────┴──────┴────────┴─────────────────────┘")
+    console.print("└────────────────┴──────┴────────┴─────────────────────┘")
 
     # Handle HTTP Fuzzing if requested
     fuzz_results = []
@@ -129,7 +131,7 @@ async def run_scan_on_target(target: str, ports_str: str, fuzz: bool = False, au
 
     # Perform Delta Diffing against previous scan
     if prev_scan:
-        print("\n╭───────────────── Attack Surface Drift (Delta Diff) ─────────────────╮")
+        console.print("\n╭───────────────── Attack Surface Drift (Delta Diff) ─────────────────╮")
         print(f"│ Comparing against previous scan from: {prev_scan['timestamp'][:19]} │")
         
         old_open_ports = {p['port'] for p in prev_scan['ports'] if p['status'] == 'open'}
@@ -153,8 +155,8 @@ async def run_scan_on_target(target: str, ports_str: str, fuzz: bool = False, au
                 print(f"│   - {u:<63} │")
         
         if not new_ports and not closed_ports and not new_urls:
-            print("│ ✨ No changes detected since last scan. Attack surface is stable.     │")
-        print("╰─────────────────────────────────────────────────────────────────────╯")
+            console.print("│ ✨ No changes detected since last scan. Attack surface is stable.     │")
+        console.print("╰─────────────────────────────────────────────────────────────────────╯")
 
     db.save_scan(target, scan_results_data, fuzz_results)
     logger.info(f"[*] Scan results for {target} archived to historical database (analyzer_history.db).")
@@ -264,7 +266,7 @@ async def main_async(args):
         logger.info(f"[+] Discovered {len(live_hosts)} live host(s): {live_hosts}")
         targets = live_hosts
     else:
-        print("Error: Either --scan <ip> or --cidr <subnet> must be specified.")
+        console.print("Error: Either --scan <ip> or --cidr <subnet> must be specified.")
         sys.exit(1)
 
     for target in targets:
@@ -283,6 +285,8 @@ async def main_async(args):
             exclude_statuses=exclude_statuses,
             exclude_sizes=exclude_sizes
         )
+
+console = Console()
 
 def main():
     parser = argparse.ArgumentParser(description="Term-Analyzer TUI/CLI Security Toolkit")
@@ -313,5 +317,7 @@ def main():
     else:
         asyncio.run(main_async(args))
 
+    return 0
 if __name__ == "__main__":
     main()
+

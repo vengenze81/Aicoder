@@ -1,0 +1,12 @@
+{
+    "target": "127.0.0.1",
+    "timestamp": "2026-09-16T15:05:00.799953",
+    "ports": [
+        {
+            "port": 80,
+            "status": "closed",
+            "audit": "Secure / N/A"
+        }
+    ],
+    "fuzz_hits": []
+}
