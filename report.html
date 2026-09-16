@@ -107,19 +107,19 @@
         <div class="meta-grid">
             <div class="meta-item">
                 <span>Target URL</span>
-                <strong>http://127.0.0.1:8080/login</strong>
+                <strong>http://127.0.0.1:8080/api/v1/protected</strong>
             </div>
             <div class="meta-item">
                 <span>Auth Type</span>
-                <strong>FORM</strong>
+                <strong>BEARER</strong>
             </div>
             <div class="meta-item">
                 <span>Scan Duration</span>
-                <strong>0.08s</strong>
+                <strong>0.04s</strong>
             </div>
             <div class="meta-item">
                 <span>Valid Credentials Found</span>
-                <strong style="color: var(--accent-green);">2</strong>
+                <strong style="color: var(--accent-green);">4</strong>
             </div>
         </div>
 
@@ -138,10 +138,19 @@
             <tbody>
                 
         <tr>
-            <td><code>admin</code></td>
+            <td><code>root</code></td>
+            <td><code>wrongpassword123</code></td>
+            <td><a href="http://127.0.0.1:8080/api/v1/protected" target="_blank">http://127.0.0.1:8080/api/v1/protected</a></td>
+            <td><code>BEARER</code></td>
+            <td><code>N/A</code></td>
+            <td><code>200</code></td>
+        </tr>
+        
+        <tr>
+            <td><code>root</code></td>
             <td><code>supersecret2026!</code></td>
-            <td><a href="http://127.0.0.1:8080/login" target="_blank">http://127.0.0.1:8080/login</a></td>
-            <td><code>FORM</code></td>
+            <td><a href="http://127.0.0.1:8080/api/v1/protected" target="_blank">http://127.0.0.1:8080/api/v1/protected</a></td>
+            <td><code>BEARER</code></td>
             <td><code>N/A</code></td>
             <td><code>200</code></td>
         </tr>
@@ -149,8 +158,17 @@
         <tr>
             <td><code>admin</code></td>
             <td><code>supersecret2026!</code></td>
-            <td><a href="http://127.0.0.1:8080/login" target="_blank">http://127.0.0.1:8080/login</a></td>
-            <td><code>FORM</code></td>
+            <td><a href="http://127.0.0.1:8080/api/v1/protected" target="_blank">http://127.0.0.1:8080/api/v1/protected</a></td>
+            <td><code>BEARER</code></td>
+            <td><code>N/A</code></td>
+            <td><code>200</code></td>
+        </tr>
+        
+        <tr>
+            <td><code>admin</code></td>
+            <td><code>wrongpassword123</code></td>
+            <td><a href="http://127.0.0.1:8080/api/v1/protected" target="_blank">http://127.0.0.1:8080/api/v1/protected</a></td>
+            <td><code>BEARER</code></td>
             <td><code>N/A</code></td>
             <td><code>200</code></td>
         </tr>
