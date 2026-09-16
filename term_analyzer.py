@@ -16,6 +16,24 @@ from collections import Counter, defaultdict
 # Suppress insecure request warnings if testing self-signed certs
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+class CircuitBreaker:
+    """Thread-safe circuit breaker to halt scanning upon hitting account lockouts or WAF rate limits."""
+    def __init__(self, threshold=3):
+        self.threshold = threshold
+        self.lockout_count = 0
+        self.tripped = False
+        self.lock = threading.Lock()
+
+    def record_lockout(self):
+        with self.lock:
+            self.lockout_count += 1
+            if self.lockout_count >= self.threshold:
+                self.tripped = True
+
+    def is_tripped(self):
+        with self.lock:
+            return self.tripped
+
 class ProxyPool:
     """Thread-safe round-robin proxy pool manager."""
     def __init__(self, filepath=None):
@@ -83,8 +101,11 @@ def parse_cookies(cookie_arg):
                 cookies[k.strip()] = v.strip()
     return cookies
 
-def test_auth(session, target_url, username, password, auth_type, user_field, pass_field, failure_keyword, success_regex, proxy_pool, single_proxy, base_headers, cookies, delay=0, lockout_keyword=None, verbose=False):
-    """Handles testing for HTML Form, HTTP Basic, and HTTP Digest authentication."""
+def test_auth(session, target_url, username, password, auth_type, content_type, user_field, pass_field, failure_keyword, success_regex, proxy_pool, single_proxy, base_headers, cookies, circuit_breaker, delay=0, lockout_keyword=None, verbose=False):
+    """Handles testing for HTML Form, JSON API, HTTP Basic, and HTTP Digest authentication with circuit breaker protection."""
+    if circuit_breaker.is_tripped():
+        return None
+
     headers = base_headers.copy()
     req_proxies = get_request_proxies(proxy_pool, single_proxy)
     apply_jitter(delay)
@@ -95,41 +116,46 @@ def test_auth(session, target_url, username, password, auth_type, user_field, pa
 
     try:
         if auth_type == "form":
-            if "Content-Type" not in headers:
-                headers["Content-Type"] = "application/x-www-form-urlencoded"
-            
-            get_resp = session.get(target_url, headers=headers, cookies=cookies, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
-            
-            hidden_inputs = {}
-            if get_resp.status_code == 200:
-                matches = re.findall(r'<input[^>]+type=["\']?hidden["\']?[^>]*>', get_resp.text, re.IGNORECASE)
-                for m in matches:
-                    name_match = re.search(r'name=["\']?([^"\']+)["\']?', m, re.IGNORECASE)
-                    val_match = re.search(r'value=["\']?([^"\']*)["\']?', m, re.IGNORECASE)
-                    if name_match:
-                        name = name_match.group(1)
-                        val = val_match.group(1) if val_match else ""
-                        hidden_inputs[name] = val
+            if content_type == "json":
+                headers["Content-Type"] = "application/json"
+                payload = json.dumps({user_field: username, pass_field: password})
+                resp = session.post(target_url, data=payload, headers=headers, cookies=cookies, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
+            else:
+                if "Content-Type" not in headers:
+                    headers["Content-Type"] = "application/x-www-form-urlencoded"
+                
+                get_resp = session.get(target_url, headers=headers, cookies=cookies, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
+                
+                hidden_inputs = {}
+                if get_resp.status_code == 200:
+                    matches = re.findall(r'<input[^>]+type=["\']?hidden["\']?[^>]*>', get_resp.text, re.IGNORECASE)
+                    for m in matches:
+                        name_match = re.search(r'name=["\']?([^"\']+)["\']?', m, re.IGNORECASE)
+                        val_match = re.search(r'value=["\']?([^"\']*)["\']?', m, re.IGNORECASE)
+                        if name_match:
+                            name = name_match.group(1)
+                            val = val_match.group(1) if val_match else ""
+                            hidden_inputs[name] = val
 
-            payload = {
-                user_field: username,
-                pass_field: password,
-                **hidden_inputs
-            }
+                payload = {
+                    user_field: username,
+                    pass_field: password,
+                    **hidden_inputs
+                }
 
-            apply_jitter(delay)
-            resp = session.post(
-                target_url, data=payload, headers=headers, cookies=cookies,
-                proxies=req_proxies, timeout=5, allow_redirects=True, verify=False
-            )
+                apply_jitter(delay)
+                resp = session.post(
+                    target_url, data=payload, headers=headers, cookies=cookies,
+                    proxies=req_proxies, timeout=5, allow_redirects=True, verify=False
+                )
 
-            if resp.status_code in [200, 302, 303]:
+            if resp.status_code in [200, 201, 302, 303]:
                 body_text = resp.text
                 if success_regex and re.search(success_regex, body_text):
                     is_success = True
                 elif failure_keyword and failure_keyword.lower() not in body_text.lower():
                     is_success = True
-                elif not failure_keyword and resp.status_code == 302:
+                elif not failure_keyword and resp.status_code in [200, 201, 302]:
                     is_success = True
 
         elif auth_type == "basic":
@@ -151,7 +177,10 @@ def test_auth(session, target_url, username, password, auth_type, user_field, pa
         status_code = resp.status_code if resp else 0
 
         if resp and check_lockout(resp.text, status_code, lockout_keyword):
-            print(f"[!] [LOCKOUT/WAF WARNING] Rate-limit triggered for user '{username}' at {target_url} (Status: {status_code})")
+            circuit_breaker.record_lockout()
+            print(f"[!] [CIRCUIT BREAKER WARNING] Lockout/Rate-limit triggered for user '{username}' at {target_url} (Status: {status_code})")
+            if circuit_breaker.is_tripped():
+                print(f"[!] [CRITICAL ALERT] Lockout threshold reached! Halting scan to prevent account lockout/IP ban.")
 
         captured_cookies = {c.name: c.value for c in resp.cookies} if resp else {}
         captured_headers = {k: v for k, v in resp.headers.items() if 'auth' in k.lower() or 'token' in k.lower() or 'set-cookie' in k.lower()} if resp else {}
@@ -488,11 +517,12 @@ def run_analysis(args):
     proxy_pool = ProxyPool(args.proxy_file) if args.proxy_file else None
     base_headers = parse_custom_headers(args.header)
     cookies = parse_cookies(args.cookie)
+    circuit_breaker = CircuitBreaker(threshold=args.lockout_threshold)
 
     session = requests.Session()
 
     print(f"[*] Loaded {len(usernames)} username(s) and {len(passwords)} password(s).")
-    print(f"[*] Auth Type: {args.auth_type.upper()}")
+    print(f"[*] Auth Type: {args.auth_type.upper()} | Content-Type: {args.content_type.upper()}")
     print(f"[*] Running with max {args.threads} concurrent threads...\n" + "-" * 60)
 
     tasks = [(user, pwd) for user in usernames for pwd in passwords]
@@ -503,14 +533,16 @@ def run_analysis(args):
         futures = [
             executor.submit(
                 test_auth, session, args.url, user, pwd, args.auth_type,
-                args.user_field, args.pass_field, args.failure_keyword, 
+                args.content_type, args.user_field, args.pass_field, args.failure_keyword, 
                 args.success_regex, proxy_pool, args.proxy, base_headers, 
-                cookies, args.delay, args.lockout_keyword, args.verbose
+                cookies, circuit_breaker, args.delay, args.lockout_keyword, args.verbose
             )
             for user, pwd in tasks
         ]
 
         for future in as_completed(futures):
+            if circuit_breaker.is_tripped():
+                break
             res = future.result()
             if res:
                 all_results.append(res)
@@ -525,6 +557,9 @@ def run_analysis(args):
                         "session_headers": res['session_headers']
                     })
 
+    if circuit_breaker.is_tripped():
+        print("\n[!] Scan aborted early due to Circuit Breaker trip (Account Lockout Safeguard activated).")
+
     timing_vulns = []
     if args.timing_analysis:
         timing_vulns = analyze_timing_leak(all_results)
@@ -536,16 +571,18 @@ def run_analysis(args):
     return valid_credentials, timing_vulns, length_outliers
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Advanced Security Analyzer with Multi-Protocol Authentication")
+    parser = argparse.ArgumentParser(description="Advanced Security Analyzer with JSON API Auth & Circuit Breaker")
     parser.add_argument("-u", "--url", required=True, help="Target URL")
     parser.add_argument("--auth-type", choices=["form", "basic", "digest"], default="form", help="Authentication type to test")
+    parser.add_argument("--content-type", choices=["form", "json"], default="form", help="Payload content type for form/API auth")
     parser.add_argument("--users", default="usernames.txt", help="Path to usernames wordlist")
     parser.add_argument("--passwords", default="passwords.txt", help="Path to passwords wordlist")
-    parser.add_argument("--user-field", default="username", help="Form field name for username")
-    parser.add_argument("--pass-field", default="password", help="Form field name for password")
+    parser.add_argument("--user-field", default="username", help="Payload field name for username")
+    parser.add_argument("--pass-field", default="password", help="Payload field name for password")
     parser.add_argument("--failure-keyword", default="invalid", help="Keyword in response indicating failure")
     parser.add_argument("--success-regex", help="Regular expression matching successful response body")
     parser.add_argument("--lockout-keyword", help="Keyword or phrase indicating lockout or rate limit")
+    parser.add_argument("--lockout-threshold", type=int, default=3, help="Consecutive lockouts before tripping circuit breaker")
     parser.add_argument("-H", "--header", action="append", help="Custom HTTP header")
     parser.add_argument("--cookie", help="Custom cookies string")
     parser.add_argument("--delay", type=float, default=0.0, help="Base delay in seconds")
