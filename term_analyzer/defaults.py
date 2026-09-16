@@ -1,47 +1,14 @@
-SERVICE_DEFAULT_CREDENTIALS = {
-    8080: [
-        ("admin", "admin"),
-        ("admin", "password"),
-        ("root", "root"),
-        ("tomcat", "tomcat"),
-        ("admin", ""),
-    ],
-    80: [
-        ("admin", "admin"),
-        ("admin", "password"),
-        ("root", "toor"),
-        ("administrator", "password"),
-    ],
-    443: [
-        ("admin", "admin"),
-        ("admin", "password"),
-    ],
-    3306: [
-        ("root", ""),
-        ("root", "root"),
-        ("admin", "admin"),
-    ],
-    5432: [
-        ("postgres", "postgres"),
-        ("postgres", ""),
-    ],
-    22: [
-        ("root", "root"),
-        ("root", "toor"),
-        ("admin", "admin"),
-    ],
-    21: [
-        ("anonymous", "anonymous"),
-        ("root", "root"),
-        ("admin", "admin"),
-    ],
-    23: [
-        ("admin", "admin"),
-        ("root", "root"),
-        ("admin", "password"),
-    ],
-}
-
-def get_defaults_for_port(port: int):
-    """Retrieve default credential pairs for a given port."""
-    return SERVICE_DEFAULT_CREDENTIALS.get(port, [("admin", "admin"), ("admin", "password")])
+def get_defaults_for_port(port):
+    """
+    Returns default credential pairs for known audit ports.
+    """
+    defaults = {
+        21: [("anonymous", "anonymous@"), ("root", "root"), ("admin", "admin"), ("ftp", "ftp")],
+        22: [("root", "root"), ("admin", "password"), ("ubuntu", "ubuntu"), ("admin", "admin")],
+        80: [("admin", "admin"), ("admin", "password"), ("root", "root"), ("tomcat", "tomcat"), ("admin", "")],
+        443: [("admin", "admin"), ("admin", "password"), ("root", "root")],
+        3306: [("root", ""), ("root", "root"), ("admin", "admin"), ("mysql", "mysql")],
+        5432: [("postgres", "postgres"), ("postgres", "password"), ("admin", "admin")],
+        8080: [("admin", "admin"), ("admin", "password"), ("root", "root"), ("tomcat", "tomcat"), ("admin", "")]
+    }
+    return defaults.get(port, [("admin", "admin"), ("root", "root")])

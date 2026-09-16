@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 import os
 import time
+from ftplib import FTP, error_perm
 
 try:
     import paramiko
@@ -47,6 +48,22 @@ def parse_headers(header_args):
             key, val = h.split(":", 1)
             headers[key.strip()] = val.strip()
     return headers
+
+def test_ftp_auth(host, port, username, password):
+    """Tests FTP authentication against port 21."""
+    try:
+        ftp = FTP()
+        ftp.connect(host, port=port, timeout=3)
+        ftp.login(user=username, passwd=password)
+        ftp.quit()
+        return True, "FTP Login Successful!"
+    except error_perm as e:
+        err_str = str(e)
+        if "530" in err_str or "Login incorrect" in err_str:
+            return False, "Authentication Failed (530)"
+        return False, f"FTP Perm Error: {err_str}"
+    except Exception as e:
+        return False, f"FTP Error: {e}"
 
 def test_http_auth(host, port, username, password, custom_headers=None):
     scheme = "https" if port == 443 else "http"
@@ -107,7 +124,9 @@ def test_postgresql_auth(host, port, username, password):
         return False, f"PostgreSQL Error: {err_msg}"
 
 def perform_auth_check(target_host, port, username, password, custom_headers=None):
-    if port == 22:
+    if port == 21:
+        return test_ftp_auth(target_host, port, username, password)
+    elif port == 22:
         return test_ssh_auth(target_host, port, username, password)
     elif port in [80, 443, 8080]:
         return test_http_auth(target_host, port, username, password, custom_headers=custom_headers)
@@ -120,7 +139,7 @@ def perform_auth_check(target_host, port, username, password, custom_headers=Non
 
 def run_credential_spray(target_host, open_ports, user_arg=None, password_arg=None, user_file=None, password_file=None, max_threads=5, delay=0.0, custom_headers=None):
     """
-    Executes live multithreaded credential spraying with delay and custom headers.
+    Executes live multithreaded credential spraying including FTP support.
     """
     results = []
     tasks = []
