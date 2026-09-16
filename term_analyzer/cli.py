@@ -14,6 +14,7 @@ from term_analyzer.dir_scanner import run_dir_scan
 from term_analyzer.openapi_scanner import run_openapi_scan
 from term_analyzer.crawler import crawl_target
 from term_analyzer.vuln_scanner import run_vulnerability_scan
+from term_analyzer.headers_scanner import audit_headers_and_cors
 
 console = Console()
 
@@ -263,14 +264,12 @@ async def run_vuln_scan_async(args):
         console.print("[bold red][!] Please specify a target URL using --target[/bold red]")
         return
         
-    # Step 1: Crawl to discover endpoints and forms
     endpoints, forms = await crawl_target(
         target_url=args.target,
         max_depth=args.max_depth,
         concurrency=args.concurrency
     )
     
-    # Step 2: Actively test discovered assets for vulnerabilities
     findings = await run_vulnerability_scan(endpoints, forms, concurrency=args.concurrency)
     
     formatted_results = []
@@ -285,6 +284,34 @@ async def run_vuln_scan_async(args):
         
     report_data = {
         "mode": "vulnerability-scan",
+        "target": args.target,
+        "results": formatted_results
+    }
+    
+    if args.json_report:
+        json_report(report_data, args.json_report)
+    if args.html_report:
+        generate_html_report(report_data, args.html_report)
+
+async def run_headers_scan_async(args):
+    if not args.target:
+        console.print("[bold red][!] Please specify a target URL using --target[/bold red]")
+        return
+        
+    findings = await audit_headers_and_cors(args.target)
+    
+    formatted_results = []
+    for f in findings:
+        formatted_results.append({
+            "payloads": [f["type"]],
+            "status_code": 200,
+            "response_length": 0,
+            "response_snippet": f"Details: {f['details']}",
+            "extracted_secrets": []
+        })
+        
+    report_data = {
+        "mode": "headers-scan",
         "target": args.target,
         "results": formatted_results
     }
@@ -324,6 +351,7 @@ def main():
     parser.add_argument("--openapi", action="store_true", help="Enable OpenAPI / Swagger schema-driven scan mode")
     parser.add_argument("--crawl", action="store_true", help="Enable recursive web crawler and form extractor mode")
     parser.add_argument("--vuln-scan", action="store_true", help="Enable automated crawl + active vulnerability scanner mode")
+    parser.add_argument("--headers-scan", action="store_true", help="Enable security headers and CORS misconfiguration auditor")
     parser.add_argument("--max-depth", type=int, default=2, help="Maximum crawl depth")
     parser.add_argument("--spec", type=str, default=None, help="Path to OpenAPI/Swagger JSON or YAML spec file")
     parser.add_argument("--domain", type=str, default=None, help="Base domain for VHost fuzzing (e.g., example.com)")
@@ -355,6 +383,8 @@ def main():
     
     if args.download_wordlist:
         download_wordlist(args.download_wordlist)
+    elif args.headers_scan:
+        asyncio.run(run_headers_scan_async(args))
     elif args.vuln_scan:
         asyncio.run(run_vuln_scan_async(args))
     elif args.crawl:

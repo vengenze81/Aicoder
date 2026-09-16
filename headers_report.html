@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Term Analyzer Security Report</title>
+    <style>
+        body { background-color: #0d1117; color: #c9d1d9; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 20px; }
+        h1 { color: #58a6ff; border-bottom: 1px solid #30363d; padding-bottom: 10px; }
+        .card { background-color: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 20px; margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #30363d; }
+        th { background-color: #21262d; color: #e6edf3; }
+        .badge { padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.85em; }
+        .badge-success { background-color: #238636; color: #fff; }
+        .badge-warn { background-color: #9e6a03; color: #fff; }
+        .badge-error { background-color: #da3633; color: #fff; }
+        pre { margin: 0; white-space: pre-wrap; word-wrap: break-word; color: #8b949e; max-width: 400px; }
+    </style>
+</head>
+<body>
+    <h1>🛡️ Term Analyzer Security Dashboard</h1>
+    <div class="card">
+        <h3>Attack Summary</h3>
+        <p><strong>Mode:</strong> HEADERS-SCAN</p>
+        <p><strong>Target/Endpoint:</strong> <code>http://127.0.0.1:8080</code></p>
+    </div>
+    <div class="card">
+        <h3>Execution Results</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Payloads</th>
+                    <th>Status</th>
+                    <th>Length</th>
+                    <th>Response Snippet</th>
+                </tr>
+            </thead>
+            <tbody>
+                
+        <tr>
+            <td><code>Missing Security Headers</code></td>
+            <td><span class="badge badge-success">200</span></td>
+            <td>0</td>
+            <td><pre>Details: Missing headers: Content-Security-Policy, Strict-Transport-Security, X-Frame-Options, X-Content-Type-Options, X-XSS-Protection, Referrer-Policy</pre></td>
+        </tr>
+        
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>
