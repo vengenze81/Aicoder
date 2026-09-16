@@ -84,15 +84,34 @@ def get_request_proxies(proxy_pool, single_proxy):
         return {"http": single_proxy, "https": single_proxy}
     return None
 
-def test_basic_auth(session, target_url, path, username, password, proxy_pool, single_proxy, delay=0, lockout_keyword=None, verbose=False):
-    """Tests HTTP Basic Authentication with proxy rotation and rate limiting."""
-    url = f"{target_url.rstrip('/')}{path}"
+def parse_custom_headers(header_args):
+    """Parses custom header strings into a dictionary."""
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    if header_args:
+        for h in header_args:
+            if ":" in h:
+                key, val = h.split(":", 1)
+                headers[key.strip()] = val.strip()
+    return headers
+
+def parse_cookies(cookie_arg):
+    """Parses a cookie string into a dictionary."""
+    cookies = {}
+    if cookie_arg:
+        for item in cookie_arg.split(";"):
+            if "=" in item:
+                k, v = item.split("=", 1)
+                cookies[k.strip()] = v.strip()
+    return cookies
+
+def test_basic_auth(session, target_url, path, username, password, proxy_pool, single_proxy, base_headers, cookies, delay=0, lockout_keyword=None, verbose=False):
+    """Tests HTTP Basic Authentication with custom headers, cookies, and proxy rotation."""
+    url = f"{target_url.rstrip('/')}{path}"
     req_proxies = get_request_proxies(proxy_pool, single_proxy)
     
     apply_jitter(delay)
     try:
-        baseline = session.get(url, headers=headers, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
+        baseline = session.get(url, headers=base_headers, cookies=cookies, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
         if baseline.status_code == 404:
             return None
 
@@ -101,7 +120,7 @@ def test_basic_auth(session, target_url, path, username, password, proxy_pool, s
             return None
 
         apply_jitter(delay)
-        resp = session.get(url, auth=HTTPBasicAuth(username, password), headers=headers, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
+        resp = session.get(url, auth=HTTPBasicAuth(username, password), headers=base_headers, cookies=cookies, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
         
         if check_lockout(resp.text, resp.status_code, lockout_keyword):
             print(f"[!] [LOCKOUT/WAF WARNING] Potential lockout or rate-limiting detected at {url} (Status: {resp.status_code})")
@@ -118,15 +137,14 @@ def test_basic_auth(session, target_url, path, username, password, proxy_pool, s
         pass
     return None
 
-def test_digest_auth(session, target_url, path, username, password, proxy_pool, single_proxy, delay=0, lockout_keyword=None, verbose=False):
-    """Tests HTTP Digest Authentication with proxy rotation and rate limiting."""
+def test_digest_auth(session, target_url, path, username, password, proxy_pool, single_proxy, base_headers, cookies, delay=0, lockout_keyword=None, verbose=False):
+    """Tests HTTP Digest Authentication with custom headers, cookies, and rate limiting."""
     url = f"{target_url.rstrip('/')}{path}"
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     req_proxies = get_request_proxies(proxy_pool, single_proxy)
     
     apply_jitter(delay)
     try:
-        baseline = session.get(url, headers=headers, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
+        baseline = session.get(url, headers=base_headers, cookies=cookies, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
         if baseline.status_code == 404:
             return None
 
@@ -135,7 +153,7 @@ def test_digest_auth(session, target_url, path, username, password, proxy_pool, 
             return None
 
         apply_jitter(delay)
-        resp = session.get(url, auth=HTTPDigestAuth(username, password), headers=headers, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
+        resp = session.get(url, auth=HTTPDigestAuth(username, password), headers=base_headers, cookies=cookies, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
         
         if check_lockout(resp.text, resp.status_code, lockout_keyword):
             print(f"[!] [LOCKOUT/WAF WARNING] Potential lockout or rate-limiting detected at {url} (Status: {resp.status_code})")
@@ -154,17 +172,17 @@ def test_digest_auth(session, target_url, path, username, password, proxy_pool, 
         pass
     return None
 
-def test_form_auth(session, target_url, username, password, user_field, pass_field, failure_keyword, proxy_pool, single_proxy, delay=0, lockout_keyword=None, verbose=False):
-    """Tests HTML Form-Based Authentication with CSRF scraping, rate limiting, and lockout detection."""
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Content-Type": "application/x-www-form-urlencoded"
-    }
+def test_form_auth(session, target_url, username, password, user_field, pass_field, failure_keyword, success_regex, proxy_pool, single_proxy, base_headers, cookies, delay=0, lockout_keyword=None, verbose=False):
+    """Tests HTML Form-Based Authentication with CSRF scraping, regex success matching, and custom headers/cookies."""
+    headers = base_headers.copy()
+    if "Content-Type" not in headers:
+        headers["Content-Type"] = "application/x-www-form-urlencoded"
+        
     req_proxies = get_request_proxies(proxy_pool, single_proxy)
 
     apply_jitter(delay)
     try:
-        get_resp = session.get(target_url, headers=headers, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
+        get_resp = session.get(target_url, headers=headers, cookies=cookies, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
         
         hidden_inputs = {}
         if get_resp.status_code == 200:
@@ -188,6 +206,7 @@ def test_form_auth(session, target_url, username, password, user_field, pass_fie
             target_url,
             data=payload,
             headers=headers,
+            cookies=cookies,
             proxies=req_proxies,
             timeout=5,
             allow_redirects=True,
@@ -199,8 +218,11 @@ def test_form_auth(session, target_url, username, password, user_field, pass_fie
 
         is_success = False
         if resp.status_code in [200, 302, 303]:
-            body_text = resp.text.lower()
-            if failure_keyword and failure_keyword.lower() not in body_text:
+            body_text = resp.text
+            if success_regex:
+                if re.search(success_regex, body_text):
+                    is_success = True
+            elif failure_keyword and failure_keyword.lower() not in body_text.lower():
                 is_success = True
             elif not failure_keyword and resp.status_code == 302:
                 is_success = True
@@ -223,18 +245,15 @@ def test_form_auth(session, target_url, username, password, user_field, pass_fie
 
     return None
 
-def test_api_token(session, target_url, token, header_format, proxy_pool, single_proxy, delay=0, lockout_keyword=None, verbose=False):
-    """Tests API Token validation with rate limiting."""
-    token_header_value = header_format.replace("{token}", token)
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Authorization": token_header_value
-    }
+def test_api_token(session, target_url, token, header_format, proxy_pool, single_proxy, base_headers, cookies, delay=0, lockout_keyword=None, verbose=False):
+    """Tests API Token validation with custom headers and rate limiting."""
+    headers = base_headers.copy()
+    headers["Authorization"] = header_format.replace("{token}", token)
     req_proxies = get_request_proxies(proxy_pool, single_proxy)
 
     apply_jitter(delay)
     try:
-        resp = session.get(target_url, headers=headers, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
+        resp = session.get(target_url, headers=headers, cookies=cookies, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
         
         if check_lockout(resp.text, resp.status_code, lockout_keyword):
             print(f"[!] [LOCKOUT/WAF WARNING] API rate limit triggered at {target_url} (Status: {resp.status_code})")
@@ -456,6 +475,9 @@ def run_analysis(args):
     if args.delay > 0:
         print(f"[*] Rate limiting active: Base delay {args.delay}s with randomized jitter.")
 
+    base_headers = parse_custom_headers(args.header)
+    cookies = parse_cookies(args.cookie)
+
     session = requests.Session()
 
     if args.auth_type == "api-token":
@@ -466,7 +488,7 @@ def run_analysis(args):
 
         valid_credentials = []
         with ThreadPoolExecutor(max_workers=args.threads) as executor:
-            futures = [executor.submit(test_api_token, session, args.url, token, args.api_header, proxy_pool, args.proxy, args.delay, args.lockout_keyword, args.verbose) for token in tokens]
+            futures = [executor.submit(test_api_token, session, args.url, token, args.api_header, proxy_pool, args.proxy, base_headers, cookies, args.delay, args.lockout_keyword, args.verbose) for token in tokens]
             for future in as_completed(futures):
                 result = future.result()
                 if result:
@@ -508,11 +530,11 @@ def run_analysis(args):
         futures = []
         for task in tasks:
             if task[0] == 'basic':
-                futures.append(executor.submit(test_basic_auth, session, args.url, task[3], task[1], task[2], proxy_pool, args.proxy, args.delay, args.lockout_keyword, args.verbose))
+                futures.append(executor.submit(test_basic_auth, session, args.url, task[3], task[1], task[2], proxy_pool, args.proxy, base_headers, cookies, args.delay, args.lockout_keyword, args.verbose))
             elif task[0] == 'digest':
-                futures.append(executor.submit(test_digest_auth, session, args.url, task[3], task[1], task[2], proxy_pool, args.proxy, args.delay, args.lockout_keyword, args.verbose))
+                futures.append(executor.submit(test_digest_auth, session, args.url, task[3], task[1], task[2], proxy_pool, args.proxy, base_headers, cookies, args.delay, args.lockout_keyword, args.verbose))
             else:
-                futures.append(executor.submit(test_form_auth, session, args.url, task[1], task[2], args.user_field, args.pass_field, args.failure_keyword, proxy_pool, args.proxy, args.delay, args.lockout_keyword, args.verbose))
+                futures.append(executor.submit(test_form_auth, session, args.url, task[1], task[2], args.user_field, args.pass_field, args.failure_keyword, args.success_regex, proxy_pool, args.proxy, base_headers, cookies, args.delay, args.lockout_keyword, args.verbose))
 
         for future in as_completed(futures):
             result = future.result()
@@ -523,25 +545,28 @@ def run_analysis(args):
     return valid_credentials
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Advanced Security Analyzer for Multiple Authentication Protocols with Rate Limiting & Lockout Detection")
+    parser = argparse.ArgumentParser(description="Advanced Security Analyzer with Custom Headers, Cookies, and Regex Matching")
     parser.add_argument("-u", "--url", required=True, help="Target URL")
     parser.add_argument("--auth-type", choices=["basic", "form", "digest", "api-token"], default="basic", help="Authentication type to test")
     parser.add_argument("--users", default="usernames.txt", help="Path to usernames wordlist")
-    parser.add_argument("--passwords", default="passwords.txt", help="Path to passwords wordlist (or token list for api-token)")
+    parser.add_argument("--passwords", default="passwords.txt", help="Path to passwords wordlist")
     parser.add_argument("--paths", help="Path to endpoints wordlist (Basic/Digest Auth only)")
-    parser.add_argument("--user-field", default="username", help="Form field name for username (Form Auth only)")
-    parser.add_argument("--pass-field", default="password", help="Form field name for password (Form Auth only)")
-    parser.add_argument("--failure-keyword", default="invalid", help="Keyword in response body indicating login failure (Form Auth only)")
-    parser.add_argument("--lockout-keyword", help="Keyword or phrase in response indicating account lockout or rate limiting")
-    parser.add_argument("--delay", type=float, default=0.0, help="Base delay in seconds between requests (adds human-like jitter)")
-    parser.add_argument("--api-header", default="Bearer {token}", help="Header template for API tokens (API-Token Auth only)")
-    parser.add_argument("--mutate", action="store_true", help="Enable intelligent wordlist mutation engine (casing, leetspeak, suffixes)")
+    parser.add_argument("--user-field", default="username", help="Form field name for username")
+    parser.add_argument("--pass-field", default="password", help="Form field name for password")
+    parser.add_argument("--failure-keyword", default="invalid", help="Keyword in response indicating failure")
+    parser.add_argument("--success-regex", help="Regular expression matching successful response body")
+    parser.add_argument("--lockout-keyword", help="Keyword or phrase indicating lockout or rate limit")
+    parser.add_argument("-H", "--header", action="append", help="Custom HTTP header (e.g., 'X-Custom-Auth: token123')")
+    parser.add_argument("--cookie", help="Custom cookies string (e.g., 'session_id=abc123xyz')")
+    parser.add_argument("--delay", type=float, default=0.0, help="Base delay in seconds between requests")
+    parser.add_argument("--api-header", default="Bearer {token}", help="Header template for API tokens")
+    parser.add_argument("--mutate", action="store_true", help="Enable intelligent wordlist mutation engine")
     parser.add_argument("-t", "--threads", type=int, default=10, help="Number of concurrent threads")
-    parser.add_argument("--proxy", help="Route traffic through a single static proxy (e.g., http://127.0.0.1:8080)")
-    parser.add_argument("--proxy-file", help="Path to a file containing a list of proxy URLs for round-robin rotation")
+    parser.add_argument("--proxy", help="Route traffic through a single static proxy")
+    parser.add_argument("--proxy-file", help="Path to a proxy list file for round-robin rotation")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose debug output")
     parser.add_argument("-o", "--output", help="Save results to a JSON file")
-    parser.add_argument("--report", help="Generate a professional HTML security report (e.g., report.html)")
+    parser.add_argument("--report", help="Generate a professional HTML security report")
 
     args = parser.parse_args()
 
