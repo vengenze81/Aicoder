@@ -83,3 +83,10 @@ class DatabaseManager:
                 "ports": ports,
                 "fuzz_hits": fuzz_hits
             }
+
+    def get_all_scans(self, limit: int = 15):
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, target, timestamp FROM scans ORDER BY id DESC LIMIT ?", (limit,))
+            rows = cursor.fetchall()
+            return [{"id": r[0], "target": r[1], "timestamp": r[2]} for r in rows]

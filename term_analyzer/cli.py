@@ -4,7 +4,7 @@ import logging
 import sys
 import json
 import os
-from term_analyzer.tester import PortTester, discover_local_interfaces
+from term_analyzer.tester import PortTester
 from term_analyzer.db import DatabaseManager
 
 logging.basicConfig(
@@ -20,7 +20,9 @@ def load_config():
         "ext": "json,html,bak,txt",
         "recursive": True,
         "audit": True,
-        "output": "recon_report.html"
+        "output": "recon_report.html",
+        "headers": {},
+        "cookies": {}
     }
     if os.path.exists("config.json"):
         try:
@@ -31,7 +33,20 @@ def load_config():
             pass
     return default_config
 
-async def run_scan_on_target(target: str, ports_str: str, fuzz: bool = False, audit: bool = False, spray_pass: str = None, output: str = None, ext: str = None, recursive: bool = False, wordlist: str = None) -> None:
+def parse_key_value_pairs(items_list):
+    res = {}
+    if not items_list:
+        return res
+    for item in items_list:
+        if ":" in item:
+            k, v = item.split(":", 1)
+            res[k.strip()] = v.strip()
+        elif "=" in item:
+            k, v = item.split("=", 1)
+            res[k.strip()] = v.strip()
+    return res
+
+async def run_scan_on_target(target: str, ports_str: str, fuzz: bool = False, audit: bool = False, spray_pass: str = None, output: str = None, ext: str = None, recursive: bool = False, wordlist: str = None, headers: dict = None, cookies: dict = None) -> None:
     try:
         ports = [int(p.strip()) for p in ports_str.split(",")]
     except ValueError:
@@ -42,7 +57,7 @@ async def run_scan_on_target(target: str, ports_str: str, fuzz: bool = False, au
     prev_scan = db.get_previous_scan(target)
 
     logger.info(f"Starting reconnaissance scan on target: {target}")
-    tester = PortTester(target)
+    tester = PortTester(target, headers=headers, cookies=cookies)
     open_ports = await tester.scan_ports(ports)
 
     print(f"\n Reconnaissance Results & CVE Audit for {target}")
@@ -101,28 +116,6 @@ async def run_scan_on_target(target: str, ports_str: str, fuzz: bool = False, au
                     fuzz_results.append(hit)
             else:
                 logger.info(f"[-] No active endpoints discovered on {base_url} via fuzzer.")
-
-    # Handle Credential Spray if requested
-    spray_results = []
-    if spray_pass:
-        web_ports = [p["port"] for p in open_ports if p["port"] in {80, 443, 8080, 8443, 8000, 5000, 9090}] or [p["port"] for p in open_ports]
-        try:
-            with open("users.txt", "r") as f:
-                usernames = [line.strip() for line in f if line.strip()]
-        except Exception:
-            usernames = ["admin", "root", "user", "guest", "test"]
-
-        for port in web_ports:
-            scheme = "https" if port in {443, 8443} else "http"
-            base_url = f"{scheme}://{target}:{port}"
-            logger.info(f"[*] Running Async HTTP Credential Spray across {len(usernames)} users with password: {spray_pass}...")
-            sprayed = await tester.credential_spray_http(base_url, usernames, spray_pass)
-            if sprayed:
-                for res in sprayed:
-                    print(f" [!] SUCCESS: Username '{res['username']}' with password '{res['password']}' on {base_url}")
-                    spray_results.append(res)
-            else:
-                logger.info(f"[-] No valid credentials found on {base_url} with password {spray_pass}")
 
     # Perform Delta Diffing against previous scan
     if prev_scan:
@@ -191,12 +184,6 @@ async def run_scan_on_target(target: str, ports_str: str, fuzz: bool = False, au
                 html_content += f"<li><a href='{hit['url']}' target='_blank'>{hit['url']}</a> (Status: {hit['status']}, Size: {hit['size']} bytes)</li>"
             html_content += "</ul>"
 
-        if spray_results:
-            html_content += "<h2>Credential Spray Successes</h2><ul>"
-            for res in spray_results:
-                html_content += f"<li>User: <strong>{res['username']}</strong> / Pass: <strong>{res['password']}</strong></li>"
-            html_content += "</ul>"
-
         html_content += "</body></html>"
 
         with open(report_filename, "w") as f:
@@ -212,6 +199,15 @@ async def main_async(args):
     recursive_val = args.recursive if args.recursive else config.get("recursive", False)
     audit_val = args.audit if args.audit else config.get("audit", False)
     output_val = args.output or config.get("output", "report.html")
+
+    # Combine CLI headers/cookies with config defaults
+    headers_val = config.get("headers", {})
+    if args.header:
+        headers_val.update(parse_key_value_pairs(args.header))
+
+    cookies_val = config.get("cookies", {})
+    if args.cookie:
+        cookies_val.update(parse_key_value_pairs(args.cookie))
 
     targets = []
     if args.scan:
@@ -239,12 +235,14 @@ async def main_async(args):
             output=output_val,
             ext=ext_val,
             recursive=recursive_val,
-            wordlist=wordlist_val
+            wordlist=wordlist_val,
+            headers=headers_val,
+            cookies=cookies_val
         )
 
 def main():
     parser = argparse.ArgumentParser(description="Term-Analyzer TUI/CLI Security Toolkit")
-    group = parser.add_mutually_exclusive_group(required=True)
+    group = parser.add_mutually_exclusive_group(required=False)
     group.add_argument("--scan", help="Target IP or hostname to scan")
     group.add_argument("--cidr", help="Target CIDR subnet to sweep (e.g. 192.168.68.0/24)")
     
@@ -256,10 +254,17 @@ def main():
     parser.add_argument("--audit", action="store_true", help="Audit discovered services for unauth access")
     parser.add_argument("--spray", help="Candidate password for HTTP basic auth credential spray")
     parser.add_argument("--output", help="Save scan and finding results to an HTML report")
+    parser.add_argument("--header", action="append", help="Custom HTTP header (e.g. --header 'Authorization: Bearer xyz')")
+    parser.add_argument("--cookie", action="append", help="Custom HTTP cookie (e.g. --cookie 'session_id=12345')")
     parser.add_argument("log_file", nargs="?", help="Optional log file path")
 
     args = parser.parse_args()
-    asyncio.run(main_async(args))
 
-if __name__ == "__main__":
+    if not args.scan and not args.cidr:
+        from term_analyzer.tui import interactive_tui
+        asyncio.run(interactive_tui())
+    else:
+        asyncio.run(main_async(args))
+
+if __name__ == "main":
     main()

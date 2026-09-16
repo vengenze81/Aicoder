@@ -1,120 +1,124 @@
 import asyncio
 import socket
 import aiohttp
-import urllib.parse
 import ipaddress
 import logging
 
 logger = logging.getLogger("term_analyzer.tester")
 
-def discover_local_interfaces():
-    return []
-
 class PortTester:
-    def __init__(self, target: str):
+    def __init__(self, target: str, headers: dict = None, cookies: dict = None):
         self.target = target
+        self.headers = headers or {}
+        self.cookies = cookies or {}
 
-    async def scan_ports(self, ports: list[int], timeout: float = 1.0) -> list[dict]:
+    async def scan_ports(self, ports: list):
         open_ports = []
-        async def check_port(port):
+        for port in ports:
             try:
-                reader, writer = await asyncio.wait_for(
-                    asyncio.open_connection(self.target, port), timeout=timeout
-                )
+                conn = asyncio.open_connection(self.target, port)
+                reader, writer = await asyncio.wait_for(conn, timeout=1.5)
                 banner = ""
                 try:
                     writer.write(b"HEAD / HTTP/1.0\r\n\r\n")
                     await writer.drain()
-                    data = await asyncio.wait_for(reader.read(1024), timeout=0.5)
-                    banner = data.decode('utf-8', errors='ignore').strip()
+                    data = await asyncio.wait_for(reader.read(1024), timeout=0.8)
+                    banner = data.decode(errors="ignore").strip()
                 except Exception:
                     pass
                 writer.close()
                 await writer.wait_closed()
-                open_ports.append({"port": port, "status": "open", "banner": banner})
+                open_ports.append({"port": port, "banner": banner})
             except Exception:
                 pass
-
-        await asyncio.gather(*(check_port(p) for p in ports))
         return open_ports
 
-    async def audit_service(self, port: int, banner: str) -> dict:
-        vulnerable = False
-        if "Apache/2.4.49" in banner or "vulnerable" in banner.lower():
-            vulnerable = True
-        return {"vulnerable": vulnerable}
+    async def discover_live_hosts(self, cidr: str):
+        try:
+            net = ipaddress.ip_network(cidr, strict=False)
+        except Exception as e:
+            logger.error(f"Invalid CIDR notation {cidr}: {e}")
+            return []
 
-    async def fuzz_http_endpoints(self, base_url: str, paths: list[str], extensions: list[str] = None, recursive: bool = False) -> list[dict]:
-        extensions = extensions or []
-        discovered = []
-        visited = set()
+        live_hosts = []
+        common_ports = [80, 443, 8080, 22, 21]
 
-        async def test_path(session, url):
-            if url in visited:
-                return
-            visited.add(url)
-            try:
-                async with session.get(url, allow_redirects=False, timeout=3) as resp:
-                    if resp.status in {200, 301, 302, 403, 401}:
-                        body = await resp.read()
-                        discovered.append({
-                            "url": url,
-                            "status": resp.status,
-                            "size": len(body)
-                        })
-                        if recursive and resp.status in {200, 301, 302} and not url.endswith(tuple(extensions)) and not "." in url.split("/")[-1]:
-                            sub_paths = ["admin", "api", "config", "backup", "v1", "test", "settings", "data"]
-                            for sp in sub_paths:
-                                clean_base = url.rstrip('/')
-                                sub_url = f"{clean_base}/{sp}"
-                                await test_path(session, sub_url)
-                                for ext in extensions:
-                                    await test_path(session, f"{sub_url}.{ext}")
-            except Exception:
-                pass
-
-        async with aiohttp.ClientSession() as session:
-            tasks = []
-            for path in paths:
-                clean_path = path.lstrip('/')
-                target_url = f"{base_url.rstrip('/')}/{clean_path}"
-                tasks.append(test_path(session, target_url))
-                for ext in extensions:
-                    tasks.append(test_path(session, f"{target_url}.{ext}"))
-            if tasks:
-                await asyncio.gather(*tasks)
-        return discovered
-
-    async def credential_spray_http(self, base_url: str, usernames: list[str], password: str) -> list[dict]:
-        successes = []
-        async with aiohttp.ClientSession() as session:
-            for username in usernames:
+        async def check_host(ip):
+            for port in common_ports:
                 try:
-                    auth = aiohttp.BasicAuth(username, password)
-                    async with session.get(f"{base_url}/login", auth=auth, timeout=3) as resp:
-                        if resp.status == 200:
-                            successes.append({"username": username, "password": password})
-                except Exception:
-                    pass
-        return successes
-
-    async def discover_live_hosts(self, cidr: str, probe_ports: list[int] = [80, 443, 8080, 22]) -> list[str]:
-        network = ipaddress.ip_network(cidr, strict=False)
-        ips = list(network.hosts()) if network.num_addresses > 2 else [network.network_address]
-        
-        async def check_host(ip_str):
-            for port in probe_ports:
-                try:
-                    _, writer = await asyncio.wait_for(
-                        asyncio.open_connection(str(ip_str), port), timeout=0.6
-                    )
+                    conn = asyncio.open_connection(str(ip), port)
+                    _, writer = await asyncio.wait_for(conn, timeout=0.4)
                     writer.close()
                     await writer.wait_closed()
-                    return str(ip_str)
+                    return str(ip)
                 except Exception:
                     continue
             return None
 
-        tasks = [check_host(ip) for ip in ips]
+        tasks = [check_host(ip) for ip in net.hosts()]
         results = await asyncio.gather(*tasks)
-        return [ip for ip in results if ip is not None]
+        live_hosts = [res for res in results if res is not None]
+        return live_hosts
+
+    async def audit_service(self, port: int, banner: str):
+        vulnerable = False
+        details = "Secure / N/A"
+        if "Apache/2.4.49" in banner or "Apache/2.4.50" in banner:
+            vulnerable = True
+            details = "CVE-2021-41773 (Path Traversal)"
+        elif "vsftpd 2.3.4" in banner:
+            vulnerable = True
+            details = "Backdoor Command Execution"
+        return {"vulnerable": vulnerable, "details": details}
+
+    async def fuzz_http_endpoints(self, base_url: str, paths: list, extensions: list = None, recursive: bool = False):
+        extensions = extensions or []
+        discovered = []
+        seen_urls = set()
+
+        async with aiohttp.ClientSession(headers=self.headers, cookies=self.cookies) as session:
+            async def test_path(url):
+                if url in seen_urls:
+                    return
+                seen_urls.add(url)
+                try:
+                    async with session.get(url, timeout=4, allow_redirects=True) as resp:
+                        if resp.status in {200, 301, 302, 403, 401}:
+                            body = await resp.read()
+                            discovered.append({
+                                "url": str(resp.url),
+                                "status": resp.status,
+                                "size": len(body)
+                            })
+                            if recursive and resp.status in {200, 301, 302} and not url.endswith("/"):
+                                sub_url = url + "/"
+                                for p in paths:
+                                    await test_path(f"{sub_url}{p}")
+                                    for ext in extensions:
+                                        await test_path(f"{sub_url}{p}.{ext}")
+                except Exception:
+                    pass
+
+            tasks = []
+            for path in paths:
+                clean_path = path.lstrip("/")
+                url = f"{base_url.rstrip('/')}/{clean_path}"
+                tasks.append(test_path(url))
+                for ext in extensions:
+                    tasks.append(test_path(f"{url}.{ext}"))
+
+            await asyncio.gather(*tasks)
+        return discovered
+
+    async def credential_spray_http(self, base_url: str, usernames: list, password: str):
+        successes = []
+        async with aiohttp.ClientSession(headers=self.headers, cookies=self.cookies) as session:
+            for username in usernames:
+                try:
+                    auth = aiohttp.BasicAuth(username, password)
+                    async with session.get(f"{base_url.rstrip('/')}/login", auth=auth, timeout=3) as resp:
+                        if resp.status == 200 or ("dashboard" in str(resp.url).lower() and resp.status != 401):
+                            successes.append({"username": username, "password": password})
+                except Exception:
+                    pass
+        return successes
