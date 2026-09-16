@@ -5,11 +5,31 @@ import os
 import argparse
 import json
 import re
+import threading
+import itertools
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 # Suppress insecure request warnings if testing self-signed certs
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+class ProxyPool:
+    """Thread-safe round-robin proxy pool manager."""
+    def __init__(self, filepath=None):
+        self.proxies = []
+        if filepath and os.path.exists(filepath):
+            with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+                self.proxies = [line.strip() for line in f if line.strip() and not line.startswith('#')]
+        
+        self.lock = threading.Lock()
+        self.cycle = itertools.cycle(self.proxies) if self.proxies else None
+
+    def get_proxy_dict(self):
+        if not self.cycle:
+            return None
+        with self.lock:
+            p = next(self.cycle)
+            return {"http": p, "https": p}
 
 def load_wordlist(filepath):
     """Loads lines from a file into a list, ignoring empty lines and comments."""
@@ -18,13 +38,22 @@ def load_wordlist(filepath):
     with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
         return [line.strip() for line in f if line.strip() and not line.startswith('#')]
 
-def test_basic_auth(session, target_url, path, username, password, verbose=False):
-    """Tests HTTP Basic Authentication."""
+def get_request_proxies(proxy_pool, single_proxy):
+    """Determines proxies to use for a specific request."""
+    if proxy_pool and proxy_pool.proxies:
+        return proxy_pool.get_proxy_dict()
+    elif single_proxy:
+        return {"http": single_proxy, "https": single_proxy}
+    return None
+
+def test_basic_auth(session, target_url, path, username, password, proxy_pool, single_proxy, verbose=False):
+    """Tests HTTP Basic Authentication with proxy rotation."""
     url = f"{target_url.rstrip('/')}{path}"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    req_proxies = get_request_proxies(proxy_pool, single_proxy)
     
     try:
-        baseline = session.get(url, headers=headers, timeout=5, allow_redirects=True, verify=False)
+        baseline = session.get(url, headers=headers, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
         if baseline.status_code == 404:
             return None
 
@@ -32,7 +61,7 @@ def test_basic_auth(session, target_url, path, username, password, verbose=False
         if not auth_challenged:
             return None
 
-        resp = session.get(url, auth=HTTPBasicAuth(username, password), headers=headers, timeout=5, allow_redirects=True, verify=False)
+        resp = session.get(url, auth=HTTPBasicAuth(username, password), headers=headers, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
         if resp.status_code in [200, 204, 302] and resp.status_code != 401:
             return {
                 "username": username,
@@ -45,22 +74,22 @@ def test_basic_auth(session, target_url, path, username, password, verbose=False
         pass
     return None
 
-def test_digest_auth(session, target_url, path, username, password, verbose=False):
-    """Tests HTTP Digest Authentication."""
+def test_digest_auth(session, target_url, path, username, password, proxy_pool, single_proxy, verbose=False):
+    """Tests HTTP Digest Authentication with proxy rotation."""
     url = f"{target_url.rstrip('/')}{path}"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    req_proxies = get_request_proxies(proxy_pool, single_proxy)
     
     try:
-        baseline = session.get(url, headers=headers, timeout=5, allow_redirects=True, verify=False)
+        baseline = session.get(url, headers=headers, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
         if baseline.status_code == 404:
             return None
 
-        # Check for Digest challenge in WWW-Authenticate header
         auth_header = baseline.headers.get('WWW-Authenticate', '')
         if baseline.status_code != 401 or 'Digest' not in auth_header:
             return None
 
-        resp = session.get(url, auth=HTTPDigestAuth(username, password), headers=headers, timeout=5, allow_redirects=True, verify=False)
+        resp = session.get(url, auth=HTTPDigestAuth(username, password), headers=headers, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
         if resp.status_code in [200, 204, 302] and resp.status_code != 401:
             return {
                 "username": username,
@@ -75,15 +104,16 @@ def test_digest_auth(session, target_url, path, username, password, verbose=Fals
         pass
     return None
 
-def test_form_auth(session, target_url, username, password, user_field, pass_field, failure_keyword, verbose=False):
-    """Tests HTML Form-Based Authentication with automated hidden input/CSRF scraping."""
+def test_form_auth(session, target_url, username, password, user_field, pass_field, failure_keyword, proxy_pool, single_proxy, verbose=False):
+    """Tests HTML Form-Based Authentication with CSRF scraping and proxy rotation."""
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "Content-Type": "application/x-www-form-urlencoded"
     }
+    req_proxies = get_request_proxies(proxy_pool, single_proxy)
 
     try:
-        get_resp = session.get(target_url, headers=headers, timeout=5, allow_redirects=True, verify=False)
+        get_resp = session.get(target_url, headers=headers, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
         
         hidden_inputs = {}
         if get_resp.status_code == 200:
@@ -106,6 +136,7 @@ def test_form_auth(session, target_url, username, password, user_field, pass_fie
             target_url,
             data=payload,
             headers=headers,
+            proxies=req_proxies,
             timeout=5,
             allow_redirects=True,
             verify=False
@@ -137,20 +168,17 @@ def test_form_auth(session, target_url, username, password, user_field, pass_fie
 
     return None
 
-def test_api_token(session, target_url, token, header_format, verbose=False):
-    """Tests API Token / Bearer Token validation against an endpoint."""
-    # Format the header value (e.g., "Bearer <token>" or just "<token>")
+def test_api_token(session, target_url, token, header_format, proxy_pool, single_proxy, verbose=False):
+    """Tests API Token validation with proxy rotation."""
     token_header_value = header_format.replace("{token}", token)
-    
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "Authorization": token_header_value
     }
+    req_proxies = get_request_proxies(proxy_pool, single_proxy)
 
     try:
-        resp = session.get(target_url, headers=headers, timeout=5, allow_redirects=True, verify=False)
-        
-        # Successful API token requests typically return 200 OK or 204 No Content
+        resp = session.get(target_url, headers=headers, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
         if resp.status_code in [200, 204]:
             return {
                 "username": "API-Token",
@@ -166,7 +194,7 @@ def test_api_token(session, target_url, token, header_format, verbose=False):
     return None
 
 def export_html_report(findings, report_path, metadata):
-    """Generates a professional, styled HTML security report using safe replacement."""
+    """Generates a professional, styled HTML security report."""
     rows_html = ""
     for item in findings:
         rows_html += f"""
@@ -353,21 +381,24 @@ def run_analysis(args):
     usernames = load_wordlist(args.users)
     passwords = load_wordlist(args.passwords)
     paths = load_wordlist(args.paths) if args.paths else []
+    
+    proxy_pool = ProxyPool(args.proxy_file) if args.proxy_file else None
+    if proxy_pool and proxy_pool.proxies:
+        print(f"[*] Loaded {len(proxy_pool.proxies)} proxy(ies) for round-robin rotation.")
+    elif args.proxy:
+        print(f"[*] Using static proxy: {args.proxy}")
+
+    session = requests.Session()
 
     if args.auth_type == "api-token":
-        # For API tokens, passwords.txt functions as the token list
         tokens = passwords if passwords else usernames
         print(f"[*] Loaded {len(tokens)} API token(s) to test.")
         print(f"[*] Auth Type: API-TOKEN")
         print(f"[*] Running with max {args.threads} concurrent threads...\n" + "-" * 60)
 
         valid_credentials = []
-        session = requests.Session()
-        if args.proxy:
-            session.proxies = {"http": args.proxy, "https": args.proxy}
-
         with ThreadPoolExecutor(max_workers=args.threads) as executor:
-            futures = [executor.submit(test_api_token, session, args.url, token, args.api_header, args.verbose) for token in tokens]
+            futures = [executor.submit(test_api_token, session, args.url, token, args.api_header, proxy_pool, args.proxy, args.verbose) for token in tokens]
             for future in as_completed(futures):
                 result = future.result()
                 if result:
@@ -375,7 +406,6 @@ def run_analysis(args):
                     print(f"\n[+] [SUCCESS] Valid API token found -> {result['password']} at {result['endpoint']}\n")
         return valid_credentials
 
-    # Standard user/pass auth types
     if not usernames:
         usernames = ["admin", "root", "user"]
     if not passwords:
@@ -386,10 +416,6 @@ def run_analysis(args):
     print(f"[*] Running with max {args.threads} concurrent threads...\n" + "-" * 60)
 
     valid_credentials = []
-    session = requests.Session()
-    if args.proxy:
-        session.proxies = {"http": args.proxy, "https": args.proxy}
-
     tasks = []
     if args.auth_type == "basic":
         if not paths:
@@ -405,7 +431,7 @@ def run_analysis(args):
             for pwd in passwords:
                 for path in paths:
                     tasks.append(('digest', user, pwd, path))
-    else: # form
+    else:
         for user in usernames:
             for pwd in passwords:
                 tasks.append(('form', user, pwd, args.url))
@@ -414,11 +440,11 @@ def run_analysis(args):
         futures = []
         for task in tasks:
             if task[0] == 'basic':
-                futures.append(executor.submit(test_basic_auth, session, args.url, task[3], task[1], task[2], args.verbose))
+                futures.append(executor.submit(test_basic_auth, session, args.url, task[3], task[1], task[2], proxy_pool, args.proxy, args.verbose))
             elif task[0] == 'digest':
-                futures.append(executor.submit(test_digest_auth, session, args.url, task[3], task[1], task[2], args.verbose))
+                futures.append(executor.submit(test_digest_auth, session, args.url, task[3], task[1], task[2], proxy_pool, args.proxy, args.verbose))
             else:
-                futures.append(executor.submit(test_form_auth, session, args.url, task[1], task[2], args.user_field, args.pass_field, args.failure_keyword, args.verbose))
+                futures.append(executor.submit(test_form_auth, session, args.url, task[1], task[2], task[3], args.user_field, args.pass_field, args.failure_keyword, proxy_pool, args.proxy, args.verbose))
 
         for future in as_completed(futures):
             result = future.result()
@@ -429,7 +455,7 @@ def run_analysis(args):
     return valid_credentials
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Advanced Security Analyzer for Multiple Authentication Protocols")
+    parser = argparse.ArgumentParser(description="Advanced Security Analyzer for Multiple Authentication Protocols with Proxy Rotation")
     parser.add_argument("-u", "--url", required=True, help="Target URL")
     parser.add_argument("--auth-type", choices=["basic", "form", "digest", "api-token"], default="basic", help="Authentication type to test")
     parser.add_argument("--users", default="usernames.txt", help="Path to usernames wordlist")
@@ -440,7 +466,8 @@ if __name__ == "__main__":
     parser.add_argument("--failure-keyword", default="invalid", help="Keyword in response body indicating login failure (Form Auth only)")
     parser.add_argument("--api-header", default="Bearer {token}", help="Header template for API tokens (API-Token Auth only)")
     parser.add_argument("-t", "--threads", type=int, default=10, help="Number of concurrent threads")
-    parser.add_argument("--proxy", help="Route traffic through a proxy (e.g., http://127.0.0.1:8080)")
+    parser.add_argument("--proxy", help="Route traffic through a single static proxy (e.g., http://127.0.0.1:8080)")
+    parser.add_argument("--proxy-file", help="Path to a file containing a list of proxy URLs for round-robin rotation")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose debug output")
     parser.add_argument("-o", "--output", help="Save results to a JSON file")
     parser.add_argument("--report", help="Generate a professional HTML security report (e.g., report.html)")
