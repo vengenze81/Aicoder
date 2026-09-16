@@ -43,6 +43,44 @@ class CircuitBreaker:
         with self.lock:
             return self.tripped
 
+class AdaptiveThrottler:
+    """Dynamically adjusts request delays and implements backoff upon detecting latency spikes or rate limits."""
+    def __init__(self, base_delay=0.0, enabled=False):
+        self.base_delay = base_delay
+        self.enabled = enabled
+        self.current_delay = base_delay
+        self.response_times = []
+        self.baseline_avg = None
+        self.backoff_factor = 1.0
+        self.lock = threading.Lock()
+
+    def record_response(self, elapsed, status_code):
+        if not self.enabled:
+            return
+        with self.lock:
+            self.response_times.append(elapsed)
+            if len(self.response_times) > 20:
+                self.response_times.pop(0)
+            
+            if self.baseline_avg is None and len(self.response_times) >= 5:
+                self.baseline_avg = sum(self.response_times) / len(self.response_times)
+
+            # Check for rate limiting or latency spike (> 3x baseline or HTTP 429)
+            if status_code == 429 or (self.baseline_avg and elapsed > self.baseline_avg * 3.0):
+                self.backoff_factor = min(self.backoff_factor * 1.5, 10.0)
+                self.current_delay = max(self.current_delay * 1.5, 0.5) * self.backoff_factor
+            elif status_code < 400 and self.backoff_factor > 1.0:
+                # Gradually recover back to base delay
+                self.backoff_factor = max(1.0, self.backoff_factor * 0.9)
+                self.current_delay = max(self.base_delay, self.current_delay * 0.95)
+
+    def get_delay(self):
+        if not self.enabled:
+            return self.base_delay
+        with self.lock:
+            jitter = random.uniform(0, max(self.current_delay * 0.3, 0.05))
+            return self.current_delay + jitter
+
 class ProxyPool:
     """Thread-safe round-robin proxy pool manager."""
     def __init__(self, filepath=None):
@@ -90,11 +128,11 @@ def mutate_passwords(passwords):
             
     return list(mutated)
 
-def apply_jitter(delay):
-    """Applies a random jitter delay to mimic human behavior and evade WAF throttling."""
+def apply_delay_sleep(throttler):
+    """Applies dynamic delay computed by the adaptive throttler."""
+    delay = throttler.get_delay()
     if delay > 0:
-        actual_delay = delay + random.uniform(0, delay * 0.5)
-        time.sleep(actual_delay)
+        time.sleep(delay)
 
 def check_lockout(resp_text, status_code, lockout_keyword):
     """Checks if a response indicates account lockout or rate limiting."""
@@ -238,7 +276,7 @@ def audit_jwt_token(token, secret_file):
         "vulnerabilities": vulnerabilities
     }
 
-def audit_mfa_flow(session, mfa_url, otp_field, test_codes, proxy_pool, single_proxy, base_headers, cookies):
+def audit_mfa_flow(session, mfa_url, otp_field, test_codes, proxy_pool, single_proxy, base_headers, cookies, throttler):
     """Audits secondary MFA/OTP verification endpoints for bypass flaws or valid code reuse."""
     print("\n" + "="*60 + "\n[*] Starting Multi-Factor Authentication (MFA) Flow Audit:")
     print(f"    - Target MFA Endpoint: {mfa_url}")
@@ -252,10 +290,14 @@ def audit_mfa_flow(session, mfa_url, otp_field, test_codes, proxy_pool, single_p
         headers["Content-Type"] = "application/x-www-form-urlencoded"
         payload = {otp_field: code}
         
+        apply_delay_sleep(throttler)
+        start_time = time.time()
         try:
             resp = session.post(mfa_url, data=payload, headers=headers, cookies=cookies, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
+            elapsed = time.time() - start_time
+            throttler.record_response(elapsed, resp.status_code if resp else 0)
+
             if resp.status_code in [200, 302, 303]:
-                # Check if submission succeeded (did not return to MFA prompt or error)
                 if "invalid" not in resp.text.lower() and "error" not in resp.text.lower() and "code" not in resp.text.lower():
                     print(f"    [+] [MFA BYPASS / SUCCESS] Valid access achieved using OTP code: '{code}' (Status: {resp.status_code})")
                     mfa_findings.append({"code": code, "status_code": resp.status_code})
@@ -270,11 +312,11 @@ def audit_mfa_flow(session, mfa_url, otp_field, test_codes, proxy_pool, single_p
     print("="*60)
     return mfa_findings
 
-def test_user_existence(session, target_url, username, auth_type, content_type, user_field, pass_field, proxy_pool, single_proxy, base_headers, cookies, extract_csrf, csrf_field, probe_password, delay, verbose):
+def test_user_existence(session, target_url, username, auth_type, content_type, user_field, pass_field, proxy_pool, single_proxy, base_headers, cookies, extract_csrf, csrf_field, probe_password, throttler, verbose):
     """Probes a single username with a dummy password to check for account existence via differential response analysis."""
     headers = base_headers.copy()
     req_proxies = get_request_proxies(proxy_pool, single_proxy)
-    apply_jitter(delay)
+    apply_delay_sleep(throttler)
 
     start_time = time.time()
     try:
@@ -307,9 +349,12 @@ def test_user_existence(session, target_url, username, auth_type, content_type, 
                 resp = session.post(target_url, data=payload, headers=headers, cookies=cookies, proxies=req_proxies, timeout=5, allow_redirects=True, verify=False)
 
             elapsed = time.time() - start_time
+            status_code = resp.status_code if resp else 0
+            throttler.record_response(elapsed, status_code)
+
             return {
                 "username": username,
-                "status_code": resp.status_code if resp else 0,
+                "status_code": status_code,
                 "response_length": len(resp.content) if resp else 0,
                 "response_text": resp.text if resp else "",
                 "response_time": elapsed
@@ -319,7 +364,7 @@ def test_user_existence(session, target_url, username, auth_type, content_type, 
             print(f"[!] Enum request exception for user {username}: {e}")
     return None
 
-def run_user_enumeration(session, target_url, usernames, auth_type, content_type, user_field, pass_field, proxy_pool, single_proxy, base_headers, cookies, extract_csrf, csrf_field, probe_password, delay, threads, verbose):
+def run_user_enumeration(session, target_url, usernames, auth_type, content_type, user_field, pass_field, proxy_pool, single_proxy, base_headers, cookies, extract_csrf, csrf_field, probe_password, throttler, threads, verbose):
     """Runs differential user enumeration across all usernames in the wordlist."""
     print("\n" + "="*60 + "\n[*] Starting Dedicated Account Enumeration Phase:")
     print(f"    - Probing {len(usernames)} username(s) with dummy password...")
@@ -330,7 +375,7 @@ def run_user_enumeration(session, target_url, usernames, auth_type, content_type
             executor.submit(
                 test_user_existence, session, target_url, user, auth_type, content_type,
                 user_field, pass_field, proxy_pool, single_proxy, base_headers, cookies,
-                extract_csrf, csrf_field, probe_password, delay, verbose
+                extract_csrf, csrf_field, probe_password, throttler, verbose
             )
             for user in usernames
         ]
@@ -367,14 +412,14 @@ def run_user_enumeration(session, target_url, usernames, auth_type, content_type
     print("="*60)
     return valid_users
 
-def test_auth(session, target_url, username, password, auth_type, content_type, user_field, pass_field, failure_keyword, success_regex, proxy_pool, single_proxy, base_headers, cookies, circuit_breaker, extract_csrf=False, csrf_field="csrf_token", delay=0, lockout_keyword=None, verbose=False):
-    """Handles authentication testing with optional dynamic CSRF token extraction and circuit breaker protection."""
+def test_auth(session, target_url, username, password, auth_type, content_type, user_field, pass_field, failure_keyword, success_regex, proxy_pool, single_proxy, base_headers, cookies, circuit_breaker, throttler, extract_csrf=False, csrf_field="csrf_token", lockout_keyword=None, verbose=False):
+    """Handles authentication testing with optional dynamic CSRF token extraction, circuit breaker, and adaptive throttling."""
     if circuit_breaker.is_tripped():
         return None
 
     headers = base_headers.copy()
     req_proxies = get_request_proxies(proxy_pool, single_proxy)
-    apply_jitter(delay)
+    apply_delay_sleep(throttler)
 
     start_time = time.time()
     resp = None
@@ -410,38 +455,45 @@ def test_auth(session, target_url, username, password, auth_type, content_type, 
                     headers["Content-Type"] = "application/x-www-form-urlencoded"
 
                 payload = {user_field: username, pass_field: password, **hidden_inputs}
-                apply_jitter(delay)
                 resp = session.post(
                     target_url, data=payload, headers=headers, cookies=cookies,
                     proxies=req_proxies, timeout=5, allow_redirects=True, verify=False
                 )
 
-            if resp.status_code in [200, 201, 302, 303]:
+            elapsed = time.time() - start_time
+            status_code = resp.status_code if resp else 0
+            throttler.record_response(elapsed, status_code)
+
+            if status_code in [200, 201, 302, 303]:
                 body_text = resp.text
                 if success_regex and re.search(success_regex, body_text):
                     is_success = True
                 elif failure_keyword and failure_keyword.lower() not in body_text.lower():
                     is_success = True
-                elif not failure_keyword and resp.status_code in [200, 201, 302]:
+                elif not failure_keyword and status_code in [200, 201, 302]:
                     is_success = True
 
         elif auth_type == "basic":
             auth = HTTPBasicAuth(username, password)
             resp = session.get(target_url, auth=auth, headers=headers, cookies=cookies, proxies=req_proxies, timeout=5, verify=False)
-            if resp.status_code == 200:
+            elapsed = time.time() - start_time
+            status_code = resp.status_code if resp else 0
+            throttler.record_response(elapsed, status_code)
+            if status_code == 200:
                 if not success_regex or re.search(success_regex, resp.text):
                     is_success = True
 
         elif auth_type == "digest":
             auth = HTTPDigestAuth(username, password)
             resp = session.get(target_url, auth=auth, headers=headers, cookies=cookies, proxies=req_proxies, timeout=5, verify=False)
-            if resp.status_code == 200:
+            elapsed = time.time() - start_time
+            status_code = resp.status_code if resp else 0
+            throttler.record_response(elapsed, status_code)
+            if status_code == 200:
                 if not success_regex or re.search(success_regex, resp.text):
                     is_success = True
 
-        elapsed = time.time() - start_time
         resp_length = len(resp.content) if resp else 0
-        status_code = resp.status_code if resp else 0
 
         if resp and check_lockout(resp.text, status_code, lockout_keyword):
             circuit_breaker.record_lockout()
@@ -801,18 +853,21 @@ def run_analysis(args):
     base_headers = parse_custom_headers(args.header)
     cookies = parse_cookies(args.cookie)
     circuit_breaker = CircuitBreaker(threshold=args.lockout_threshold)
+    throttler = AdaptiveThrottler(base_delay=args.delay, enabled=args.adaptive_delay)
 
     session = requests.Session()
 
     print(f"[*] Loaded {len(usernames)} username(s) and {len(passwords)} password(s).")
     print(f"[*] Auth Type: {args.auth_type.upper()} | Content-Type: {args.content_type.upper()}")
+    if args.adaptive_delay:
+        print("[*] Adaptive Throttling & Auto-Backoff Enabled: Active latency monitoring engaged.")
 
     if args.enum_users:
         run_user_enumeration(
             session, args.url, usernames, args.auth_type, args.content_type,
             args.user_field, args.pass_field, proxy_pool, args.proxy, base_headers,
             cookies, args.extract_csrf, args.csrf_field, args.probe_password,
-            args.delay, args.threads, args.verbose
+            throttler, args.threads, args.verbose
         )
 
     print(f"[*] Running password audit with max {args.threads} concurrent threads...\n" + "-" * 60)
@@ -827,8 +882,8 @@ def run_analysis(args):
                 test_auth, session, args.url, user, pwd, args.auth_type,
                 args.content_type, args.user_field, args.pass_field, args.failure_keyword, 
                 args.success_regex, proxy_pool, args.proxy, base_headers, 
-                cookies, circuit_breaker, args.extract_csrf, args.csrf_field, 
-                args.delay, args.lockout_keyword, args.verbose
+                cookies, circuit_breaker, throttler, args.extract_csrf, args.csrf_field, 
+                args.lockout_keyword, args.verbose
             )
             for user, pwd in tasks
         ]
@@ -875,7 +930,7 @@ def run_analysis(args):
         otp_codes = load_wordlist(args.otp_list)
         if not otp_codes:
             otp_codes = ["0000", "1234", "1111", "9999", "", "000000", "123456"]
-        audit_mfa_flow(session, args.mfa_url, args.otp_field, otp_codes, proxy_pool, args.proxy, base_headers, cookies)
+        audit_mfa_flow(session, args.mfa_url, args.otp_field, otp_codes, proxy_pool, args.proxy, base_headers, cookies, throttler)
 
     timing_vulns = []
     if args.timing_analysis:
@@ -888,7 +943,7 @@ def run_analysis(args):
     return valid_credentials, timing_vulns, length_outliers
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Advanced Security Analyzer with MFA Flow Auditing")
+    parser = argparse.ArgumentParser(description="Advanced Security Analyzer with Adaptive Throttling")
     parser.add_argument("-u", "--url", required=True, help="Target URL")
     parser.add_argument("--auth-type", choices=["form", "basic", "digest"], default="form", help="Authentication type to test")
     parser.add_argument("--content-type", choices=["form", "json"], default="form", help="Payload content type for form/API auth")
@@ -897,6 +952,7 @@ if __name__ == "__main__":
     parser.add_argument("--enum-users", action="store_true", help="Enable dedicated account enumeration mode")
     parser.add_argument("--probe-password", default="invalidprobe12345!", help="Dummy password used during user enumeration probe")
     parser.add_argument("--mutate", action="store_true", help="Enable smart password mutation & rule engine")
+    parser.add_argument("--adaptive-delay", action="store_true", help="Enable adaptive latency-based throttling & auto-backoff")
     parser.add_argument("--jwt-audit", action="store_true", help="Enable automated JWT security audit and secret cracking")
     parser.add_argument("--jwt-token", help="Explicit JWT token string to audit")
     parser.add_argument("--jwt-secrets", default="passwords.txt", help="Wordlist for JWT HMAC secret cracking")
