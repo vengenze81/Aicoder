@@ -1,6 +1,3 @@
 admin
 root
 user
-administrator
-test
-guest
