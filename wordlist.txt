@@ -1,0 +1,13 @@
+admin/
+login/
+api/
+v1/
+swagger.json
+metrics
+status
+.env
+config.json
+dashboard/
+console/
+debug/
+actuator/

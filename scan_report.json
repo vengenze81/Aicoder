@@ -1,0 +1,20 @@
+{
+    "target": "127.0.0.1",
+    "timestamp": "2026-09-16T13:19:07.584067",
+    "services": [
+        {
+            "host": "127.0.0.1",
+            "port": 9090,
+            "status": "open",
+            "banner": "-"
+        }
+    ],
+    "endpoints": [
+        {
+            "url": "http://127.0.0.1:9090/config.json",
+            "status": 200,
+            "size": 19
+        }
+    ],
+    "matches": []
+}

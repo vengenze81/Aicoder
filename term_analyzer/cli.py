@@ -1,52 +1,83 @@
-"""Command‑line interface – entry point installed as `term-analyzer`."""
-from __future__ import annotations
-
-import argparse
 import asyncio
+import argparse
+import sys
 import json
 import logging
-import sys
+from datetime import datetime
 from pathlib import Path
-from typing import List
+from rich.console import Console
+from rich.table import Table
 
-from .parser import LogParser, ParsedLog, LogEntry
-from .reporter import json_report, pretty_report
-from .rules import TooManyErrorsRule, UnusedDepWarningRule, ConfigFileFixRule, VulnerableServiceRule
+from term_analyzer.rules import RuleEngine
+from tester import PortTester, discover_local_interfaces
 
-try:
-    from tester import PortTester
-except ImportError:
-    PortTester = None
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s – %(message)s")
+logger = logging.getLogger("term_analyzer.cli")
 
-log = logging.getLogger(__name__)
+console = Console()
 
-def _setup_logging(verbose: bool) -> None:
-    level = logging.DEBUG if verbose else logging.INFO
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s %(levelname)s %(name)s – %(message)s",
-        datefmt="%H:%M:%S",
-    )
+def export_report(data: dict, output_path: str):
+    path = Path(output_path)
+    ext = path.suffix.lower()
+    
+    if ext == ".json":
+        path.write_text(json.dumps(data, indent=4))
+        console.print(f"[green][+] JSON report successfully saved to {path}[/green]")
+    elif ext == ".html":
+        html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>TermAnalyzer Security Report</title>
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #e2e8f0; padding: 2rem; max-width: 1000px; margin: auto; }}
+        h1, h2 {{ color: #38bdf8; border-bottom: 2px solid #1e293b; padding-bottom: 0.5rem; }}
+        .meta {{ background: #1e293b; padding: 1rem; border-radius: 8px; margin-bottom: 2rem; border-left: 4px solid #38bdf8; }}
+        table {{ width: 100%; border-collapse: collapse; margin-bottom: 2rem; background: #1e293b; border-radius: 8px; overflow: hidden; }}
+        th, td {{ padding: 12px 16px; text-align: left; border-bottom: 1px solid #334155; }}
+        th {{ background: #0f172a; color: #38bdf8; }}
+        .high {{ color: #f87171; font-weight: bold; }}
+        .medium {{ color: #fbbf24; font-weight: bold; }}
+        .info {{ color: #38bdf8; }}
+    </style>
+</head>
+<body>
+    <h1>🛡️ TermAnalyzer Reconnaissance & Security Report</h1>
+    <div class="meta">
+        <p><strong>Target Scope:</strong> {data["target"]}</p>
+        <p><strong>Timestamp:</strong> {data["timestamp"]}</p>
+    </div>
 
-def build_rule_set(args: argparse.Namespace) -> List:
-    """Instantiate rule objects based on CLI flags."""
-    rules = [
-        TooManyErrorsRule(dry_run=args.dry_run),
-        UnusedDepWarningRule(dry_run=args.dry_run),
-        VulnerableServiceRule(dry_run=args.dry_run),
-    ]
-    if args.config:
-        rules.append(ConfigFileFixRule(Path(args.config), dry_run=args.dry_run))
-    return rules
+    <h2>Discovered Services</h2>
+    <table>
+        <tr><th>Host</th><th>Port</th><th>Status</th><th>Banner Preview</th></tr>
+        {"".join([f"<tr><td>{s["host"]}</td><td>{s["port"]}</td><td>{s["status"]}</td><td>{s["banner"]}</td></tr>" for s in data["services"]]) if data["services"] else "<tr><td colspan=4>No open services found.</td></tr>"}
+    </table>
 
-async def perform_scan_async(target: str, ports_str: str) -> ParsedLog:
-    """Actively and concurrently scan a target IP, CIDR subnet, or local interface using asyncio."""
+    <h2>Fuzzed Endpoints</h2>
+    <table>
+        <tr><th>Status</th><th>Size</th><th>Endpoint URL</th></tr>
+        {"".join([f"<tr><td>{e["status"]}</td><td>{e["size"]} bytes</td><td>{e["url"]}</td></tr>" for e in data["endpoints"]]) if data["endpoints"] else "<tr><td colspan=3>No endpoints fuzzed or found.</td></tr>"}
+    </table>
+
+    <h2>Security Findings & Recommended Actions</h2>
+    <table>
+        <tr><th>Severity</th><th>Rule ID</th><th>Recommended Action</th></tr>
+        {"".join([f"<tr><td class=\"{m["severity"]}\">{m["severity"].upper()}</td><td>{m["rule_id"]}</td><td>{m["action"]}</td></tr>" for m in data["matches"]]) if data["matches"] else "<tr><td colspan=3>No vulnerabilities or rule violations detected.</td></tr>"}
+    </table>
+</body>
+</html>
+"""
+        path.write_text(html_content)
+        console.print(f"[green][+] HTML report successfully saved to {path}[/green]")
+    else:
+        logger.error(f"Unsupported output file extension: {ext}. Use .json or .html")
+
+async def perform_scan_async(target: str, ports_str: str, fuzz: bool = False, output: str = None) -> None:
     if not PortTester:
         raise RuntimeError("PortTester module (`tester.py`) could not be imported.")
 
-    # Handle automatic local network discovery
     if target.lower() == "local":
-        from tester import discover_local_interfaces
         interfaces = discover_local_interfaces()
         non_loopback = [ip for ip in interfaces if not ip.startswith("127.")]
         if non_loopback:
@@ -58,66 +89,172 @@ async def perform_scan_async(target: str, ports_str: str) -> ParsedLog:
                 target = base_ip
         else:
             target = "127.0.0.1"
-        print(f"[*] Auto-resolved local scan target to: {target}")
-    if not PortTester:
-        raise RuntimeError("PortTester module (`tester.py`) could not be imported.")
-    
-    ports = [int(p.strip()) for p in ports_str.split(",") if p.strip().isdigit()]
-    parsed = ParsedLog()
-    
-    tester = PortTester(target)
-    log.info("Starting concurrent async reconnaissance scan on %s across ports: %s", target, ports)
-    
-    services = await tester.scan_subnet(target, ports)
-    
-    for service in services:
-        if service.status == "open":
-            msg = f"Discovered open port {service.port} with banner: {service.banner or 'No banner'}"
-            if service.version:
-                msg += f" (Identified version: {service.version})"
-            entry = LogEntry(raw=f"info: {msg}", kind="info")
-            parsed.infos.append(entry)
-        else:
-            log.debug("Port %s is closed or filtered.", service.port)
-            
-    return parsed
-
-def main(argv: List[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Analyze terminal output or perform active security reconnaissance.")
-    parser.add_argument("input", nargs="?", type=argparse.FileType("r"), default=None, help="Log file to parse (default: stdin if not scanning)")
-    parser.add_argument("--scan", type=str, metavar="TARGET", help="Perform active reconnaissance scan on target IP/hostname")
-    parser.add_argument("--ports", type=str, default="21,22,25,80,443,3306,8080", help="Comma-separated list of ports to scan (used with --scan)")
-    parser.add_argument("--config", type=str, help="Path to a JSON config file for patching rules")
-    parser.add_argument("--dry-run", action="store_true", default=True, help="Perform a dry run without modifying files (default)")
-    parser.add_argument("--apply", dest="dry_run", action="store_false", help="Actually apply changes/side-effects")
-    parser.add_argument("--json", action="store_true", help="Output results as JSON")
-    parser.add_argument("-v", "--verbose", action="count", default=0, help="Increase verbosity")
-
-    args = parser.parse_args(argv)
-    _setup_logging(args.verbose > 0)
+        logger.info(f"Auto-resolved local scan target to: {target}")
 
     try:
-        if args.scan:
-            parsed = asyncio.run(perform_scan_async(args.scan, args.ports))
+        ports = [int(p.strip()) for p in ports_str.split(",")]
+    except ValueError:
+        logger.error("Invalid port format. Provide comma-separated integers (e.g. 22,80,443).")
+        sys.exit(1)
+
+    logger.info(f"Starting concurrent async reconnaissance scan on {target} across ports: {ports}")
+    tester = PortTester(target=target)
+
+    if "/" in target:
+        open_services = await tester.scan_subnet(target, ports)
+    else:
+        open_services = await tester.scan_ports(ports)
+
+    services_data = [
+        {"host": svc.host, "port": svc.port, "status": svc.status, "banner": svc.banner[:60] if svc.banner else "-"}
+        for svc in open_services
+    ]
+
+    table = Table(title=f"Reconnaissance Results for {target}")
+    table.add_column("Host", style="cyan")
+    table.add_column("Port", style="magenta")
+    table.add_column("Status", style="green")
+    table.add_column("Banner Preview", style="yellow")
+
+    for svc in open_services:
+        table.add_row(str(svc.host), str(svc.port), svc.status, svc.banner[:60] if svc.banner else "-")
+
+    console.print(table)
+
+    endpoints_data = []
+    web_ports = {80, 443, 8080, 8443, 8000, 5000, 9090}
+    web_services = [s for s in open_services if s.port in web_ports or "http" in s.banner.lower()]
+
+    if fuzz and web_services:
+        wordlist_path = Path("wordlist.txt")
+        if wordlist_path.exists():
+            with open(wordlist_path) as f:
+                paths = [line.strip() for line in f if line.strip()]
         else:
-            log.info("Parsing terminal output stream...")
-            source = args.input if args.input is not None else sys.stdin
-            parsed = LogParser.parse(source)
+            paths = ["admin/", "login/", "api/", "swagger.json", ".env", "metrics", "config.json"]
 
-        rules = build_rule_set(args)
-        suggestions = []
-        for rule in rules:
-            suggestions.extend(rule.evaluate(parsed))
+        console.print(f"[bold cyan][*] Running Async HTTP Endpoint Fuzzer on discovered web services...[/bold cyan]")
+        for svc in web_services:
+            scheme = "https" if svc.port in {443, 8443} else "http"
+            base_url = f"{scheme}://{svc.host}:{svc.port}"
+            console.print(f"[*] Fuzzing {base_url} across {len(paths)} paths...")
+            found_endpoints = await tester.fuzz_http_endpoints(base_url, paths)
+            if found_endpoints:
+                fuzz_table = Table(title=f"Discovered Endpoints on {base_url}")
+                fuzz_table.add_column("Status", style="green")
+                fuzz_table.add_column("Size", style="magenta")
+                fuzz_table.add_column("Endpoint URL", style="cyan")
+                for ep in found_endpoints:
+                    fuzz_table.add_row(str(ep["status"]), str(ep["size"]), ep["url"])
+                    endpoints_data.append(ep)
+                console.print(fuzz_table)
+            else:
+                console.print(f"[yellow][-] No matching endpoints found on {base_url}[/yellow]")
 
-        if args.json:
-            print(json_report(suggestions))
+    engine = RuleEngine()
+    log_lines = []
+    for svc in open_services:
+        if svc.banner:
+            log_lines.append(f"info: Discovered open port {svc.port} with banner: {svc.banner}")
         else:
-            print(pretty_report(suggestions))
+            log_lines.append(f"info: Discovered open port {svc.port}")
 
-        return 0
-    except Exception as exc:
-        log.error("Fatal error during analysis/recon: %s", exc)
-        return 1
+    matches = engine.evaluate(log_lines)
+    matches_data = [
+        {
+            "rule_id": m.get("rule_id", "UNKNOWN"),
+            "service": m.get("service", "Unknown"),
+            "severity": m.get("severity", "info"),
+            "action": m.get("action", "Review configuration."),
+            "matched_line": m.get("matched_line", "")
+        }
+        for m in matches
+    ]
+
+    if not matches:
+        console.print("[green]╭─────────────────── Scan Results ───────────────────╮[/green]")
+        console.print("[green]│ ✅ No security issues or rule violations detected. │[/green]")
+        console.print("[green]╰────────────────────────────────────────────────────╯[/green]")
+    else:
+        report_table = Table(title="🛡️ Security & Analysis Report")
+        report_table.add_column("Severity", style="bold red")
+        report_table.add_column("Rule", style="cyan")
+        report_table.add_column("Recommended Action", style="yellow")
+
+        for match in matches:
+            sev = match.get("severity", "info").upper()
+            rule_id = match.get("rule_id", "UNKNOWN")
+            action = match.get("action", "Review configuration.")
+            report_table.add_row(sev, rule_id, action)
+
+        console.print(report_table)
+
+    if output:
+        report_payload = {
+            "target": target,
+            "timestamp": datetime.now().isoformat(),
+            "services": services_data,
+            "endpoints": endpoints_data,
+            "matches": matches_data
+        }
+        export_report(report_payload, output)
+
+def main():
+    parser = argparse.ArgumentParser(description="TermAnalyzer: High-Speed Mobile Offensive Reconnaissance & Rule Engine")
+    parser.add_argument("log_file", nargs="?", help="Path to static log file to parse (optional if using --scan)")
+    parser.add_argument("--scan", help="Target IP, CIDR block, or local to auto-discover local subnet")
+    parser.add_argument("--ports", default="22,80,443,8080,3306,6379", help="Comma-separated ports to scan")
+    parser.add_argument("--fuzz", action="store_true", help="Automatically fuzz discovered web endpoints using wordlist.txt")
+    parser.add_argument("--output", help="Export scan results to file (.json or .html)")
+
+    args = parser.parse_args()
+
+    if args.scan:
+        asyncio.run(perform_scan_async(args.scan, args.ports, fuzz=args.fuzz, output=args.output))
+    elif args.log_file:
+        logger.info(f"Parsing terminal output stream from {args.log_file}...")
+        path = Path(args.log_file)
+        if not path.exists():
+            logger.error(f"Log file not found: {args.log_file}")
+            sys.exit(1)
+        content = path.read_text(errors="ignore")
+        engine = RuleEngine()
+        matches = engine.evaluate(content.splitlines())
+        
+        matches_data = [{
+            "rule_id": m.get("rule_id", "UNKNOWN"),
+            "service": m.get("service", "Unknown"),
+            "severity": m.get("severity", "info"),
+            "action": m.get("action", "Review configuration."),
+            "matched_line": m.get("matched_line", "")
+        } for m in matches]
+
+        if not matches:
+            console.print("[green]╭─────────────────── Scan Results ───────────────────╮[/green]")
+            console.print("[green]│ ✅ No security issues or rule violations detected. │[/green]")
+            console.print("[green]╰────────────────────────────────────────────────────╯[/green]")
+        else:
+            report_table = Table(title="🛡️ Security & Analysis Report")
+            report_table.add_column("Severity", style="bold red")
+            report_table.add_column("Rule", style="cyan")
+            report_title = "Recommended Action"
+            report_table.add_column(report_title, style="yellow")
+
+            for match in matches:
+                report_table.add_row(match.get("severity", "info").upper(), match.get("rule_id", "UNKNOWN"), match.get("action", "Review configuration."))
+            console.print(report_table)
+
+        if args.output:
+            report_payload = {
+                "target": args.log_file,
+                "timestamp": datetime.now().isoformat(),
+                "services": [],
+                "endpoints": [],
+                "matches": matches_data
+            }
+            export_report(report_payload, args.output)
+    else:
+        parser.print_help()
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
