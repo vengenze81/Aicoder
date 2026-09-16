@@ -16,6 +16,7 @@ from term_analyzer.crawler import crawl_target
 from term_analyzer.vuln_scanner import run_vulnerability_scan
 from term_analyzer.headers_scanner import audit_headers_and_cors
 from term_analyzer.graphql_scanner import run_graphql_scan
+from term_analyzer.apk_scanner import audit_apk
 
 console = Console()
 
@@ -350,6 +351,34 @@ async def run_graphql_scan_async(args):
     if args.html_report:
         generate_html_report(report_data, args.html_report)
 
+def run_apk_scan_sync(args):
+    if not args.apk:
+        console.print("[bold red][!] Please specify an APK file using --apk <path.apk>[/bold red]")
+        return
+        
+    findings = audit_apk(args.apk)
+    
+    formatted_results = []
+    for f in findings:
+        formatted_results.append({
+            "payloads": [f["type"]],
+            "status_code": 200,
+            "response_length": 0,
+            "response_snippet": f"Details: {f['details']}",
+            "extracted_secrets": []
+        })
+        
+    report_data = {
+        "mode": "apk-scan",
+        "target": args.apk,
+        "results": formatted_results
+    }
+    
+    if args.json_report:
+        json_report(report_data, args.json_report)
+    if args.html_report:
+        generate_html_report(report_data, args.html_report)
+
 def handle_jwt_commands(args):
     if args.jwt_inspect:
         header, payload, err = decode_jwt(args.jwt_inspect)
@@ -374,6 +403,7 @@ def handle_jwt_commands(args):
 def main():
     parser = argparse.ArgumentParser(description="Term Analyzer - Advanced Security Assessment Framework")
     parser.add_argument("--target", type=str, default=None, help="Target URL or IP")
+    parser.add_argument("--apk", type=str, default=None, help="Path to Android APK file for static analysis")
     parser.add_argument("--intruder", action="store_true", help="Enable Burp-style intruder mode")
     parser.add_argument("--vhost", action="store_true", help="Enable Virtual Host / Host header fuzzing mode")
     parser.add_argument("--dir-scan", action="store_true", help="Enable directory and file brute-forcing mode")
@@ -382,6 +412,7 @@ def main():
     parser.add_argument("--vuln-scan", action="store_true", help="Enable automated crawl + active vulnerability scanner mode")
     parser.add_argument("--headers-scan", action="store_true", help="Enable security headers and CORS misconfiguration auditor")
     parser.add_argument("--graphql-scan", action="store_true", help="Enable GraphQL endpoint and introspection auditor")
+    parser.add_argument("--apk-scan", action="store_true", help="Enable Android APK static analysis and secret extraction")
     parser.add_argument("--max-depth", type=int, default=2, help="Maximum crawl depth")
     parser.add_argument("--spec", type=str, default=None, help="Path to OpenAPI/Swagger JSON or YAML spec file")
     parser.add_argument("--domain", type=str, default=None, help="Base domain for VHost fuzzing (e.g., example.com)")
@@ -413,6 +444,8 @@ def main():
     
     if args.download_wordlist:
         download_wordlist(args.download_wordlist)
+    elif args.apk_scan:
+        run_apk_scan_sync(args)
     elif args.graphql_scan:
         asyncio.run(run_graphql_scan_async(args))
     elif args.headers_scan:
@@ -428,17 +461,13 @@ def main():
     elif args.vhost:
         asyncio.run(run_vhost_async(args))
     elif args.intruder:
-        asyncio.run(run_intrurer_async(args) if 'run_intrurer_async' in globals() else run_intruder_async(args))
+        asyncio.run(run_intruder_async(args))
     elif args.template and args.target:
         asyncio.run(run_template_async(args))
     elif args.jwt_inspect or args.jwt_brute:
         handle_jwt_commands(args)
     else:
         parser.print_help()
-
-if __name__ == main.__code__ if hasattr(main, '__code__') else "__main__":
-    # Standard entry block
-    pass
 
 if __name__ == "__main__":
     main()
