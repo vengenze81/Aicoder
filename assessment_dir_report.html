@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Term Analyzer Security Report</title>
+    <style>
+        body { background-color: #0d1117; color: #c9d1d9; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 20px; }
+        h1 { color: #58a6ff; border-bottom: 1px solid #30363d; padding-bottom: 10px; }
+        .card { background-color: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 20px; margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #30363d; }
+        th { background-color: #21262d; color: #e6edf3; }
+        .badge { padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.85em; }
+        .badge-success { background-color: #238636; color: #fff; }
+        .badge-warn { background-color: #9e6a03; color: #fff; }
+        .badge-error { background-color: #da3633; color: #fff; }
+        pre { margin: 0; white-space: pre-wrap; word-wrap: break-word; color: #8b949e; max-width: 400px; }
+    </style>
+</head>
+<body>
+    <h1>🛡️ Term Analyzer Security Dashboard</h1>
+    <div class="card">
+        <h3>Attack Summary</h3>
+        <p><strong>Mode:</strong> DIR-SCAN</p>
+        <p><strong>Target/Endpoint:</strong> <code>http://httpbin.org</code></p>
+    </div>
+    <div class="card">
+        <h3>Execution Results</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Payloads</th>
+                    <th>Status</th>
+                    <th>Length</th>
+                    <th>Response Snippet</th>
+                </tr>
+            </thead>
+            <tbody>
+                
+        <tr>
+            <td><code>http://httpbin.org/cache</code></td>
+            <td><span class="badge badge-success">200</span></td>
+            <td>312</td>
+            <td><pre>{
+  "args": {}, 
+  "headers": {
+    "Accept": "*/*", 
+    "Accept-Encoding": "gzip, deflate", 
+    "Host": "httpbin.org", 
+    "User-Agent": "Python/3</pre></td>
+        </tr>
+        
+        <tr>
+            <td><code>http://httpbin.org/xml</code></td>
+            <td><span class="badge badge-success">200</span></td>
+            <td>522</td>
+            <td><pre>&lt;?xml version='1.0' encoding='us-ascii'?&gt;
+
+&lt;!--  A SAMPLE set of slides  --&gt;
+
+&lt;slideshow 
+    title="Sample Slide Show"
+    date="Date of publication"</pre></td>
+        </tr>
+        
+        <tr>
+            <td><code>http://httpbin.org/html</code></td>
+            <td><span class="badge badge-success">200</span></td>
+            <td>3739</td>
+            <td><pre>&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+  &lt;head&gt;
+  &lt;/head&gt;
+  &lt;body&gt;
+      &lt;h1&gt;Herman Melville - Moby-Dick&lt;/h1&gt;
+
+      &lt;div&gt;
+        &lt;p&gt;
+          Availing himself of t</pre></td>
+        </tr>
+        
+        <tr>
+            <td><code>http://httpbin.org/image</code></td>
+            <td><span class="badge badge-warn">406</span></td>
+            <td>142</td>
+            <td><pre>{"message": "Client did not request a supported media type.", "accept": ["image/webp", "image/svg+xml", "image/jpeg", "image/png", "image/*"]}</pre></td>
+        </tr>
+        
+        <tr>
+            <td><code>http://httpbin.org/post</code></td>
+            <td><span class="badge badge-warn">405</span></td>
+            <td>178</td>
+            <td><pre>&lt;!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN"&gt;
+&lt;title&gt;405 Method Not Allowed&lt;/title&gt;
+&lt;h1&gt;Method Not Allowed&lt;/h1&gt;
+&lt;p&gt;The method is not allowed</pre></td>
+        </tr>
+        
+        <tr>
+            <td><code>http://httpbin.org/get</code></td>
+            <td><span class="badge badge-success">200</span></td>
+            <td>310</td>
+            <td><pre>{
+  "args": {}, 
+  "headers": {
+    "Accept": "*/*", 
+    "Accept-Encoding": "gzip, deflate", 
+    "Host": "httpbin.org", 
+    "User-Agent": "Python/3</pre></td>
+        </tr>
+        
+        <tr>
+            <td><code>http://httpbin.org/json</code></td>
+            <td><span class="badge badge-success">200</span></td>
+            <td>429</td>
+            <td><pre>{
+  "slideshow": {
+    "author": "Yours Truly", 
+    "date": "date of publication", 
+    "slides": [
+      {
+        "title": "Wake up to WonderWidget</pre></td>
+        </tr>
+        
+        <tr>
+            <td><code>http://httpbin.org/headers</code></td>
+            <td><span class="badge badge-success">200</span></td>
+            <td>229</td>
+            <td><pre>{
+  "headers": {
+    "Accept": "*/*", 
+    "Accept-Encoding": "gzip, deflate", 
+    "Host": "httpbin.org", 
+    "User-Agent": "Python/3.13 aiohttp/3.1</pre></td>
+        </tr>
+        
+        <tr>
+            <td><code>http://httpbin.org/ip</code></td>
+            <td><span class="badge badge-success">200</span></td>
+            <td>32</td>
+            <td><pre>{
+  "origin": "213.115.23.98"
+}
+</pre></td>
+        </tr>
+        
+        <tr>
+            <td><code>http://httpbin.org/delete</code></td>
+            <td><span class="badge badge-warn">405</span></td>
+            <td>178</td>
+            <td><pre>&lt;!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN"&gt;
+&lt;title&gt;405 Method Not Allowed&lt;/title&gt;
+&lt;h1&gt;Method Not Allowed&lt;/h1&gt;
+&lt;p&gt;The method is not allowed</pre></td>
+        </tr>
+        
+        <tr>
+            <td><code>http://httpbin.org/legacy</code></td>
+            <td><span class="badge badge-success">200</span></td>
+            <td>14270</td>
+            <td><pre>&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+
+&lt;head&gt;
+  &lt;meta http-equiv='content-type' value='text/html;charset=utf8'&gt;
+  &lt;meta name='generator' value='Ronn/v0.7.3 (http://g</pre></td>
+        </tr>
+        
+        <tr>
+            <td><code>http://httpbin.org/cookies</code></td>
+            <td><span class="badge badge-success">200</span></td>
+            <td>20</td>
+            <td><pre>{
+  "cookies": {}
+}
+</pre></td>
+        </tr>
+        
+        <tr>
+            <td><code>http://httpbin.org/anything</code></td>
+            <td><span class="badge badge-success">200</span></td>
+            <td>398</td>
+            <td><pre>{
+  "args": {}, 
+  "data": "", 
+  "files": {}, 
+  "form": {}, 
+  "headers": {
+    "Accept": "*/*", 
+    "Accept-Encoding": "gzip, deflate", 
+    "Host</pre></td>
+        </tr>
+        
+        <tr>
+            <td><code>http://httpbin.org/patch</code></td>
+            <td><span class="badge badge-warn">405</span></td>
+            <td>178</td>
+            <td><pre>&lt;!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN"&gt;
+&lt;title&gt;405 Method Not Allowed&lt;/title&gt;
+&lt;h1&gt;Method Not Allowed&lt;/h1&gt;
+&lt;p&gt;The method is not allowed</pre></td>
+        </tr>
+        
+        <tr>
+            <td><code>http://httpbin.org/redirect-to</code></td>
+            <td><span class="badge badge-error">500</span></td>
+            <td>291</td>
+            <td><pre>&lt;!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN"&gt;
+&lt;title&gt;500 Internal Server Error&lt;/title&gt;
+&lt;h1&gt;Internal Server Error&lt;/h1&gt;
+&lt;p&gt;The server encounte</pre></td>
+        </tr>
+        
+        <tr>
+            <td><code>http://httpbin.org/deny</code></td>
+            <td><span class="badge badge-success">200</span></td>
+            <td>239</td>
+            <td><pre>
+          .-''''''-.
+        .' _      _ '.
+       /   O      O   \
+      :                :
+      |                |
+      :       __       :
+      </pre></td>
+        </tr>
+        
+        <tr>
+            <td><code>http://httpbin.org/WSExec</code></td>
+            <td><span class="badge badge-error">502</span></td>
+            <td>122</td>
+            <td><pre>&lt;html&gt;
+&lt;head&gt;&lt;title&gt;502 Bad Gateway&lt;/title&gt;&lt;/head&gt;
+&lt;body&gt;
+&lt;center&gt;&lt;h1&gt;502 Bad Gateway&lt;/h1&gt;&lt;/center&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+</pre></td>
+        </tr>
+        
+        <tr>
+            <td><code>http://httpbin.org/memberresources</code></td>
+            <td><span class="badge badge-error">502</span></td>
+            <td>122</td>
+            <td><pre>&lt;html&gt;
+&lt;head&gt;&lt;title&gt;502 Bad Gateway&lt;/title&gt;&lt;/head&gt;
+&lt;body&gt;
+&lt;center&gt;&lt;h1&gt;502 Bad Gateway&lt;/h1&gt;&lt;/center&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+</pre></td>
+        </tr>
+        
+        <tr>
+            <td><code>http://httpbin.org/put</code></td>
+            <td><span class="badge badge-warn">405</span></td>
+            <td>178</td>
+            <td><pre>&lt;!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN"&gt;
+&lt;title&gt;405 Method Not Allowed&lt;/title&gt;
+&lt;h1&gt;Method Not Allowed&lt;/h1&gt;
+&lt;p&gt;The method is not allowed</pre></td>
+        </tr>
+        
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>

@@ -1,5 +1,3 @@
 admin
-root
-user
+guest
 test
-manager

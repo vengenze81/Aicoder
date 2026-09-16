@@ -1,11 +1,16 @@
 README.md
 pyproject.toml
 term_analyzer/__init__.py
+term_analyzer/__main__.py
 term_analyzer/cli.py
 term_analyzer/db.py
+term_analyzer/defaults.py
 term_analyzer/parser.py
 term_analyzer/reporter.py
 term_analyzer/rules.py
+term_analyzer/scanner.py
+term_analyzer/spraying.py
+term_analyzer/templates.py
 term_analyzer/tester.py
 term_analyzer/tui.py
 term_analyzer.egg-info/PKG-INFO
