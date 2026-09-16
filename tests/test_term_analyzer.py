@@ -63,3 +63,14 @@ def test_cli_scan_integration(monkeypatch):
     # Run main and expect clean exit (0)
     exit_code = main()
     assert exit_code == 0
+
+def test_cli_scan_integration(monkeypatch):
+    from term_analyzer.cli import main
+    import sys
+    
+    # Mock sys.argv to simulate running `term-analyzer --scan 127.0.0.1 --ports 80 --json`
+    monkeypatch.setattr(sys, "argv", ["term-analyzer", "--scan", "127.0.0.1", "--ports", "80", "--json"])
+    
+    # Run main and expect clean exit (0)
+    exit_code = main()
+    assert exit_code == 0
