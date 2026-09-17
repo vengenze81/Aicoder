@@ -14,6 +14,7 @@ from port_scanner import scan_ports
 from api_discover import discover_api_endpoints
 from ssl_scanner import audit_ssl_certificate
 from vuln_fuzzer import run_offensive_fuzz
+from dir_brute import run_dir_brute
 from reporter import ScanReporter
 
 async def main():
@@ -31,6 +32,7 @@ async def main():
     parser.add_argument("--api-discover", action="store_true", help="Discover API documentation and endpoints")
     parser.add_argument("--ssl-scan", action="store_true", help="Audit SSL/TLS certificate and cipher suites")
     parser.add_argument("--vuln-fuzz", action="store_true", help="Run offensive vulnerability fuzzer (SQLi, LFI, XSS)")
+    parser.add_argument("--dir-brute", action="store_true", help="Run async directory and content brute-forcer")
     parser.add_argument("--all", action="store_true", help="Run all security modules sequentially")
 
     args = parser.parse_args()
@@ -38,6 +40,10 @@ async def main():
     reporter = ScanReporter(target_url)
 
     print(f"[*] Initializing security scan framework against: {target_url}")
+
+    if args.all or args.dir_brute:
+        print("\n[*] Executing Async Directory & Content Brute-Forcer...")
+        await run_dir_brute(target_url, reporter=reporter)
 
     if args.all or args.vuln_fuzz:
         print("\n[*] Executing Offensive Vulnerability Fuzzer...")

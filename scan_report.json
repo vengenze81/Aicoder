@@ -1,12 +1,165 @@
 {
     "target": "https://medistore.se",
-    "timestamp": "2026-09-17 10:45:03",
-    "findings": [],
+    "timestamp": "2026-09-17 10:47:15",
+    "findings": [
+        {
+            "module": "Directory Brute-Forcer",
+            "severity": "LOW",
+            "description": "Discovered hidden endpoint/file: https://medistore.se/database.sql [HTTP 403]",
+            "details": {
+                "url": "https://medistore.se/database.sql",
+                "status_code": 403
+            }
+        },
+        {
+            "module": "Directory Brute-Forcer",
+            "severity": "LOW",
+            "description": "Discovered hidden endpoint/file: https://medistore.se/site.bak [HTTP 403]",
+            "details": {
+                "url": "https://medistore.se/site.bak",
+                "status_code": 403
+            }
+        },
+        {
+            "module": "Directory Brute-Forcer",
+            "severity": "LOW",
+            "description": "Discovered hidden endpoint/file: https://medistore.se/.env [HTTP 403]",
+            "details": {
+                "url": "https://medistore.se/.env",
+                "status_code": 403
+            }
+        },
+        {
+            "module": "Directory Brute-Forcer",
+            "severity": "MEDIUM",
+            "description": "Discovered hidden endpoint/file: https://medistore.se/robots.txt [HTTP 200]",
+            "details": {
+                "url": "https://medistore.se/robots.txt",
+                "status_code": 200
+            }
+        },
+        {
+            "module": "Directory Brute-Forcer",
+            "severity": "LOW",
+            "description": "Discovered hidden endpoint/file: https://medistore.se/.git/HEAD [HTTP 403]",
+            "details": {
+                "url": "https://medistore.se/.git/HEAD",
+                "status_code": 403
+            }
+        },
+        {
+            "module": "Directory Brute-Forcer",
+            "severity": "LOW",
+            "description": "Discovered hidden endpoint/file: https://medistore.se/xmlrpc.php [HTTP 403]",
+            "details": {
+                "url": "https://medistore.se/xmlrpc.php",
+                "status_code": 403
+            }
+        },
+        {
+            "module": "Directory Brute-Forcer",
+            "severity": "LOW",
+            "description": "Discovered hidden endpoint/file: https://medistore.se/info.php [HTTP 403]",
+            "details": {
+                "url": "https://medistore.se/info.php",
+                "status_code": 403
+            }
+        },
+        {
+            "module": "Directory Brute-Forcer",
+            "severity": "MEDIUM",
+            "description": "Discovered hidden endpoint/file: https://medistore.se/admin/ [HTTP 302]",
+            "details": {
+                "url": "https://medistore.se/admin/",
+                "status_code": 302
+            }
+        },
+        {
+            "module": "Directory Brute-Forcer",
+            "severity": "MEDIUM",
+            "description": "Discovered hidden endpoint/file: https://medistore.se/wp-login.php [HTTP 200]",
+            "details": {
+                "url": "https://medistore.se/wp-login.php",
+                "status_code": 200
+            }
+        },
+        {
+            "module": "Directory Brute-Forcer",
+            "severity": "MEDIUM",
+            "description": "Discovered hidden endpoint/file: https://medistore.se/sitemap.xml [HTTP 301]",
+            "details": {
+                "url": "https://medistore.se/sitemap.xml",
+                "status_code": 301
+            }
+        }
+    ],
     "sections": {
-        "Offensive Fuzzer Analysis": {
+        "Directory Brute-Force Analysis": {
             "target": "https://medistore.se",
-            "findings_count": 0,
-            "findings": []
+            "paths_checked": 28,
+            "findings_count": 10,
+            "findings": [
+                {
+                    "path": "/database.sql",
+                    "url": "https://medistore.se/database.sql",
+                    "status": 403,
+                    "severity": "LOW"
+                },
+                {
+                    "path": "/site.bak",
+                    "url": "https://medistore.se/site.bak",
+                    "status": 403,
+                    "severity": "LOW"
+                },
+                {
+                    "path": "/.env",
+                    "url": "https://medistore.se/.env",
+                    "status": 403,
+                    "severity": "LOW"
+                },
+                {
+                    "path": "/robots.txt",
+                    "url": "https://medistore.se/robots.txt",
+                    "status": 200,
+                    "severity": "MEDIUM"
+                },
+                {
+                    "path": "/.git/HEAD",
+                    "url": "https://medistore.se/.git/HEAD",
+                    "status": 403,
+                    "severity": "LOW"
+                },
+                {
+                    "path": "/xmlrpc.php",
+                    "url": "https://medistore.se/xmlrpc.php",
+                    "status": 403,
+                    "severity": "LOW"
+                },
+                {
+                    "path": "/info.php",
+                    "url": "https://medistore.se/info.php",
+                    "status": 403,
+                    "severity": "LOW"
+                },
+                {
+                    "path": "/admin/",
+                    "url": "https://medistore.se/admin/",
+                    "status": 302,
+                    "severity": "MEDIUM"
+                },
+                {
+                    "path": "/wp-login.php",
+                    "url": "https://medistore.se/wp-login.php",
+                    "status": 200,
+                    "severity": "MEDIUM"
+                },
+                {
+                    "path": "/sitemap.xml",
+                    "url": "https://medistore.se/sitemap.xml",
+                    "status": 301,
+                    "severity": "MEDIUM"
+                }
+            ]
         }
     }
 }

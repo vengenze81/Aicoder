@@ -5,7 +5,7 @@ from textual.app import App, ComposeResult
 from textual.widgets import Header, Footer, Button, Input, RichLog, Static
 from textual.containers import Container, Horizontal, Vertical
 
-# Import all core framework modules including SSL Scanner
+# Import all core framework modules including Directory Brute-Forcer
 from vuln_scanner import scan_wordpress_plugins
 from file_scanner import scan_sensitive_files
 from xmlrpc_tester import test_xmlrpc
@@ -17,6 +17,8 @@ from subdomain_enum import enumerate_subdomains
 from port_scanner import scan_ports
 from api_discover import discover_api_endpoints
 from ssl_scanner import audit_ssl_certificate
+from vuln_fuzzer import run_offensive_fuzz
+from dir_brute import run_dir_brute
 from reporter import ScanReporter
 
 class StreamToLog(io.TextIOBase):
@@ -45,7 +47,7 @@ class SecurityDashboard(App):
         height: 1fr;
     }
     #sidebar {
-        width: 36;
+        width: 38;
         dock: left;
         padding: 1;
         background: $panel;
@@ -77,18 +79,21 @@ class SecurityDashboard(App):
             yield Input(value="https://medistore.se", id="target-input")
         with Horizontal(id="main-content"):
             with Vertical(id="sidebar"):
-                yield Static("[bold cyan]Audit Modules[/bold cyan]\n")
-                yield Button("1. SSL/TLS Audit", id="btn-ssl", variant="primary")
-                yield Button("2. API Discovery", id="btn-api", variant="primary")
-                yield Button("3. Port Scanner", id="btn-port", variant="primary")
-                yield Button("4. Subdomain Enum", id="btn-sub", variant="primary")
-                yield Button("5. Plugin Vuln Scan", id="btn-vuln", variant="primary")
-                yield Button("6. Sensitive Files", id="btn-file", variant="primary")
-                yield Button("7. XML-RPC Probe", id="btn-xmlrpc", variant="primary")
-                yield Button("8. Header Audit", id="btn-header", variant="primary")
-                yield Button("9. WAF Profiler", id="btn-waf", variant="primary")
-                yield Button("10. Credential Audit", id="btn-auth", variant="warning")
-                yield Button("11. JS Extractor", id="btn-js", variant="primary")
+                yield Static("[bold red]Offensive Modules[/bold red]\n")
+                yield Button("1. Offensive Vuln Fuzzer", id="btn-fuzz", variant="error")
+                yield Button("2. Directory Brute-Force", id="btn-brute", variant="error")
+                yield Static("\n[bold cyan]Recon Modules[/bold cyan]\n")
+                yield Button("3. SSL/TLS Audit", id="btn-ssl", variant="primary")
+                yield Button("4. API Discovery", id="btn-api", variant="primary")
+                yield Button("5. Port Scanner", id="btn-port", variant="primary")
+                yield Button("6. Subdomain Enum", id="btn-sub", variant="primary")
+                yield Button("7. Plugin Vuln Scan", id="btn-vuln", variant="primary")
+                yield Button("8. Sensitive Files", id="btn-file", variant="primary")
+                yield Button("9. XML-RPC Probe", id="btn-xmlrpc", variant="primary")
+                yield Button("10. Header Audit", id="btn-header", variant="primary")
+                yield Button("11. WAF Profiler", id="btn-waf", variant="primary")
+                yield Button("12. Credential Audit", id="btn-auth", variant="warning")
+                yield Button("13. JS Extractor", id="btn-js", variant="primary")
                 yield Static("\n")
                 yield Button("🛑 Abort Current Scan", id="btn-cancel", variant="error")
             yield RichLog(id="log-view", highlight=True, markup=True)
@@ -123,7 +128,13 @@ class SecurityDashboard(App):
         log.write(f"[bold cyan]>>> Initializing background task against target: {target_url}[/bold cyan]")
 
         try:
-            if button_id == "btn-ssl":
+            if button_id == "btn-fuzz":
+                log.write("[red]Executing Offensive Vulnerability Fuzzer (SQLi, LFI, XSS)...[/red]")
+                await run_offensive_fuzz(target_url, reporter=reporter)
+            elif button_id == "btn-brute":
+                log.write("[red]Executing Async Directory & Content Brute-Forcer...[/red]")
+                await run_dir_brute(target_url, reporter=reporter)
+            elif button_id == "btn-ssl":
                 log.write("[yellow]Executing SSL/TLS Certificate & Transport Auditor...[/yellow]")
                 await audit_ssl_certificate(target_url, reporter=reporter)
             elif button_id == "btn-api":
