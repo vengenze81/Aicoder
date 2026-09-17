@@ -1,9 +1,10 @@
 {
     "target": "https://medistore.se",
-    "timestamp": "2026-09-17 12:12:29",
+    "timestamp": "2026-09-17 12:15:08",
     "findings": [],
     "sections": {
-        "Parameter Fuzzing Analysis": {
+        "JavaScript Secret Analysis": {
+            "js_files_scanned": 25,
             "findings_count": 0,
             "findings": []
         }
