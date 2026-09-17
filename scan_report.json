@@ -1,43 +1,28 @@
 {
-    "target": "http://demo.testfire.net",
-    "timestamp": "2026-09-17 09:23:00",
+    "target": "https://medistore.se",
+    "timestamp": "2026-09-17 09:26:05",
     "findings": [
         {
-            "module": "Missing Security Header: strict-transport-security",
-            "severity": "MEDIUM",
-            "description": "The target response is missing the strict-transport-security header, reducing client-side hardening.",
-            "details": {}
-        },
-        {
-            "module": "Missing Security Header: content-security-policy",
-            "severity": "MEDIUM",
-            "description": "The target response is missing the content-security-policy header, reducing client-side hardening.",
-            "details": {}
-        },
-        {
-            "module": "Missing Security Header: x-frame-options",
-            "severity": "LOW",
-            "description": "The target response is missing the x-frame-options header, reducing client-side hardening.",
-            "details": {}
-        },
-        {
-            "module": "Missing Security Header: x-content-type-options",
-            "severity": "LOW",
-            "description": "The target response is missing the x-content-type-options header, reducing client-side hardening.",
-            "details": {}
-        },
-        {
-            "module": "Missing Security Header: referrer-policy",
-            "severity": "MEDIUM",
-            "description": "The target response is missing the referrer-policy header, reducing client-side hardening.",
-            "details": {}
-        },
-        {
-            "module": "Missing Security Header: permissions-policy",
-            "severity": "MEDIUM",
-            "description": "The target response is missing the permissions-policy header, reducing client-side hardening.",
-            "details": {}
+            "module": "API Endpoint Discovery",
+            "severity": "INFO",
+            "description": "Exposed API path found: https://medistore.se/openapi.yaml (HTTP 403)",
+            "details": {
+                "url": "https://medistore.se/openapi.yaml",
+                "status_code": 403,
+                "content_type": "text/html; charset=UTF-8"
+            }
         }
     ],
-    "sections": {}
+    "sections": {
+        "API Endpoint Discovery": {
+            "target": "https://medistore.se",
+            "total_discovered": 1,
+            "endpoints": [
+                {
+                    "url": "https://medistore.se/openapi.yaml",
+                    "status": 403
+                }
+            ]
+        }
+    }
 }
