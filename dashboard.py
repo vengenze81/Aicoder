@@ -5,17 +5,17 @@ from textual.app import App, ComposeResult
 from textual.widgets import Header, Footer, Button, Input, RichLog, Static
 from textual.containers import Container, Horizontal, Vertical
 
-# Import your core framework modules
+# Import all core framework modules including JS Extractor
 from vuln_scanner import scan_wordpress_plugins
 from file_scanner import scan_sensitive_files
 from xmlrpc_tester import test_xmlrpc
 from header_scanner import scan_security_headers
 from waf_profiler import profile_waf
 from auth_tester import run_credential_audit
+from js_extractor import extract_javascript_assets
 from reporter import ScanReporter
 
 class StreamToLog(io.TextIOBase):
-    """Custom stdout redirector to push print statements directly into the Textual RichLog widget."""
     def __init__(self, log_widget):
         self.log_widget = log_widget
 
@@ -25,8 +25,6 @@ class StreamToLog(io.TextIOBase):
         return len(text)
 
 class SecurityDashboard(App):
-    """Interactive TUI Dashboard with Background Task Management & Cancellation"""
-    
     CSS = """
     Screen {
         layout: vertical;
@@ -81,7 +79,8 @@ class SecurityDashboard(App):
                 yield Button("3. XML-RPC Probe", id="btn-xmlrpc", variant="primary")
                 yield Button("4. Header Audit", id="btn-header", variant="primary")
                 yield Button("5. WAF Profiler", id="btn-waf", variant="primary")
-                yield Button("6. Credential Bruteforce", id="btn-auth", variant="warning")
+                yield Button("6. Credential Audit", id="btn-auth", variant="warning")
+                yield Button("7. JS Secret Extractor", id="btn-js", variant="primary")
                 yield Static("\n")
                 yield Button("🛑 Abort Current Scan", id="btn-cancel", variant="error")
             yield RichLog(id="log-view", highlight=True, markup=True)
@@ -91,7 +90,6 @@ class SecurityDashboard(App):
         button_id = event.button.id
         log = self.query_one("#log-view", RichLog)
         
-        # Handle abort button
         if button_id == "btn-cancel":
             if self.current_task and not self.current_task.done():
                 self.current_task.cancel()
@@ -100,7 +98,6 @@ class SecurityDashboard(App):
                 log.write("[yellow][*] No active scan running to abort.[/yellow]")
             return
 
-        # Check if a task is already running
         if self.current_task and not self.current_task.done():
             log.write("[bold yellow][!] A scan is already in progress. Please click 'Abort Current Scan' first.[/bold yellow]")
             return
@@ -108,7 +105,6 @@ class SecurityDashboard(App):
         target_input = self.query_one("#target-input", Input)
         target_url = target_input.value.strip()
 
-        # Spawn task in the background so the UI remains fully responsive
         self.current_task = asyncio.create_task(self.run_module_task(button_id, target_url, log))
 
     async def run_module_task(self, button_id, target_url, log):
@@ -135,8 +131,11 @@ class SecurityDashboard(App):
                 log.write("[yellow]Executing WAF Rate-Limit Concurrency Profiler...[/yellow]")
                 await profile_waf(target_url, reporter=reporter)
             elif button_id == "btn-auth":
-                log.write("[yellow]Executing Credential Bruteforce & Validation Audit...[/yellow]")
+                log.write("[yellow]Executing Credential Audit...[/yellow]")
                 await run_credential_audit(target_url, "discovered_usernames.txt", "passwords.txt", timeout=8.0)
+            elif button_id == "btn-js":
+                log.write("[yellow]Executing JavaScript Asset & Secret Extractor...[/yellow]")
+                await extract_javascript_assets(target_url, reporter=reporter)
             
             reporter.save_markdown()
             log.write("[bold green]<<< Module execution finished. Report saved to scan_report.md[/bold green]")

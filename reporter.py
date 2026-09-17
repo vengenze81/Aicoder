@@ -3,64 +3,64 @@ import os
 from datetime import datetime
 
 class ScanReporter:
+    """Handles structured reporting and exports findings to Markdown and JSON formats."""
     def __init__(self, target_url):
         self.target_url = target_url
-        self.timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        self.timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.findings = []
+        self.sections = {}
 
-    def add_result(self, url, status_code, route_type, size, regex_matches=None, header_gaps=None):
-        record = {
-            "url": url,
-            "status_code": status_code,
-            "route_type": route_type,
-            "size": size,
-            "regex_matches": regex_matches or [],
-            "header_gaps": header_gaps or []
-        }
-        self.findings.append(record)
-
-    def save_json(self, filename=None):
-        if not filename:
-            filename = f"recon_report_{self.timestamp}.json"
+    def add_finding(self, module=None, severity="INFO", description="", details=None, title=None):
+        """Flexible finding adder that supports both module-style and title-style kwargs."""
+        mod = module if module else (title if title else "General Audit")
+        desc = description if description else (title if title else "No description provided")
         
+        finding = {
+            "module": mod,
+            "severity": severity,
+            "description": desc,
+            "details": details or {}
+        }
+        self.findings.append(finding)
+
+    def add_section(self, title, data):
+        """Adds custom analytical section data to the report."""
+        self.sections[title] = data
+
+    def save_markdown(self, filename="scan_report.md"):
+        md_content = f"# Security Reconnaissance Report\n\n"
+        md_content += f"- **Target:** `{self.target_url}`\n"
+        md_content += f"- **Timestamp:** `{self.timestamp}`\n"
+        md_content += f"- **Total Findings:** `{len(self.findings)}`\n\n"
+        
+        md_content += "## Summary of Findings\n"
+        if not self.findings and not self.sections:
+            md_content += "No critical vulnerabilities or items logged.\n\n"
+        else:
+            md_content += "| Module / Section | Severity / Type | Description / Details |\n"
+            md_content += "| :--- | :--- | :--- |\n"
+            for f in self.findings:
+                md_content += f"| {f['module']} | **{f['severity']}** | {f['description']} |\n"
+            for title, data in self.sections.items():
+                md_content += f"| {title} | **INFO** | Analyzed data successfully logged. |\n"
+
+        if self.sections:
+            md_content += "\n## Detailed Module Sections\n"
+            for title, data in self.sections.items():
+                md_content += f"\n### {title}\n"
+                md_content += f"```json\n{json.dumps(data, indent=2)}\n```\n"
+
+        with open(filename, "w") as f:
+            f.write(md_content)
+        print(f"[*] Markdown report successfully saved to {filename}")
+
+    def save_json(self, filename="scan_report.json"):
         report_data = {
             "target": self.target_url,
-            "scan_time": self.timestamp,
-            "total_findings": len(self.findings),
-            "results": self.findings
+            "timestamp": self.timestamp,
+            "findings": self.findings,
+            "sections": self.sections
         }
-        
-        with open(filename, "w", encoding="utf-8") as f:
+        with open(filename, "w") as f:
             json.dump(report_data, f, indent=4)
-        print(f"\n[+] Scan report successfully exported to JSON: {filename}")
-
-    def save_markdown(self, filename=None):
-        if not filename:
-            filename = f"recon_report_{self.timestamp}.md"
-            
-        md_content = f"# Security Reconnaissance Report\n\n"
-        md_content += f"- **Target Domain:** {self.target_url}\n"
-        md_content += f"- **Scan Timestamp:** {self.timestamp}\n"
-        md_content += f"- **Total Active Endpoints Discovered:** {len(self.findings)}\n\n"
-        md_content += "---\n\n## Endpoint Details\n\n"
-        
-        for item in self.findings:
-            md_content += f"### `{item['url']}`\n"
-            md_content += f"- **Status Code:** HTTP {item['status_code']}\n"
-            md_content += f"- **Route Type:** {item['route_type']}\n"
-            md_content += f"- **Content Size:** {item['size']} bytes\n"
-            
-            if item['regex_matches']:
-                md_content += f"- **Regex Matches:**\n"
-                for match in item['regex_matches']:
-                    md_content += f"  - `{match}`\n"
-                    
-            if item['header_gaps']:
-                md_content += f"- **Security Header Gaps:**\n"
-                for gap in item['header_gaps']:
-                    md_content += f"  - ⚠️ {gap}\n"
-            md_content += "\n---\n"
-            
-        with open(filename, "w", encoding="utf-8") as f:
-            f.write(md_content)
-        print(f"[+] Scan report successfully exported to Markdown: {filename}")
+        print(f"[*] JSON report successfully saved to {filename}")

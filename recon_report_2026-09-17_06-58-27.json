@@ -1,0 +1,154 @@
+{
+    "target": "https://medistore.se",
+    "scan_time": "2026-09-17_06-58-27",
+    "total_findings": 11,
+    "results": [
+        {
+            "url": "https://medistore.se/",
+            "status_code": 200,
+            "route_type": "Direct",
+            "size": 212228,
+            "regex_matches": [
+                "Email Address: ['info@medistore.se']"
+            ],
+            "header_gaps": [
+                "[!] [Header Gap] Missing HSTS (Site vulnerable to protocol downgrade attacks)",
+                "[!] [Header Gap] Missing CSP (No defense against XSS or data injection)",
+                "[!] [Header Gap] Missing X-Frame-Options (Vulnerable to Clickjacking)",
+                "[!] [Header Gap] Missing Permissions-Policy (Browser features unrestrained)"
+            ]
+        },
+        {
+            "url": "https://medistore.se/xmlrpc.php",
+            "status_code": 403,
+            "route_type": "Direct",
+            "size": 146,
+            "regex_matches": [],
+            "header_gaps": [
+                "[!] [Header Gap] Missing HSTS (Site vulnerable to protocol downgrade attacks)",
+                "[!] [Header Gap] Missing CSP (No defense against XSS or data injection)",
+                "[!] [Header Gap] Missing X-Frame-Options (Vulnerable to Clickjacking)",
+                "[!] [Header Gap] Missing Permissions-Policy (Browser features unrestrained)"
+            ]
+        },
+        {
+            "url": "https://medistore.se/robots.txt",
+            "status_code": 200,
+            "route_type": "Direct",
+            "size": 68,
+            "regex_matches": [],
+            "header_gaps": [
+                "[!] [Header Gap] Missing HSTS (Site vulnerable to protocol downgrade attacks)",
+                "[!] [Header Gap] Missing CSP (No defense against XSS or data injection)",
+                "[!] [Header Gap] Missing X-Frame-Options (Vulnerable to Clickjacking)",
+                "[!] [Header Gap] Missing Permissions-Policy (Browser features unrestrained)"
+            ]
+        },
+        {
+            "url": "https://medistore.se/wp-login.php",
+            "status_code": 200,
+            "route_type": "Direct",
+            "size": 14387,
+            "regex_matches": [],
+            "header_gaps": [
+                "[!] [Header Gap] Missing HSTS (Site vulnerable to protocol downgrade attacks)",
+                "[!] [Header Gap] Missing Permissions-Policy (Browser features unrestrained)"
+            ]
+        },
+        {
+            "url": "https://medistore.se/wp-json/wp/v2/users",
+            "status_code": 200,
+            "route_type": "Direct",
+            "size": 5445,
+            "regex_matches": [],
+            "header_gaps": [
+                "[!] [Header Gap] Missing HSTS (Site vulnerable to protocol downgrade attacks)",
+                "[!] [Header Gap] Missing CSP (No defense against XSS or data injection)",
+                "[!] [Header Gap] Missing X-Frame-Options (Vulnerable to Clickjacking)",
+                "[!] [Header Gap] Missing Permissions-Policy (Browser features unrestrained)"
+            ]
+        },
+        {
+            "url": "https://medistore.se/sitemap.xml",
+            "status_code": 200,
+            "route_type": "Direct",
+            "size": 5583,
+            "regex_matches": [],
+            "header_gaps": [
+                "[!] [Header Gap] Missing HSTS (Site vulnerable to protocol downgrade attacks)",
+                "[!] [Header Gap] Missing CSP (No defense against XSS or data injection)",
+                "[!] [Header Gap] Missing X-Frame-Options (Vulnerable to Clickjacking)",
+                "[!] [Header Gap] Missing Permissions-Policy (Browser features unrestrained)"
+            ]
+        },
+        {
+            "url": "https://medistore.se/cart",
+            "status_code": 200,
+            "route_type": "Direct",
+            "size": 171743,
+            "regex_matches": [
+                "Email Address: ['info@medistore.se']"
+            ],
+            "header_gaps": [
+                "[!] [Header Gap] Missing HSTS (Site vulnerable to protocol downgrade attacks)",
+                "[!] [Header Gap] Missing CSP (No defense against XSS or data injection)",
+                "[!] [Header Gap] Missing X-Frame-Options (Vulnerable to Clickjacking)",
+                "[!] [Header Gap] Missing Permissions-Policy (Browser features unrestrained)"
+            ]
+        },
+        {
+            "url": "https://medistore.se/my-account/",
+            "status_code": 200,
+            "route_type": "Direct",
+            "size": 170676,
+            "regex_matches": [
+                "Email Address: ['info@medistore.se']"
+            ],
+            "header_gaps": [
+                "[!] [Header Gap] Missing HSTS (Site vulnerable to protocol downgrade attacks)",
+                "[!] [Header Gap] Missing Permissions-Policy (Browser features unrestrained)"
+            ]
+        },
+        {
+            "url": "https://medistore.se/wp-json/wc/store/v1/products",
+            "status_code": 200,
+            "route_type": "Direct",
+            "size": 120550,
+            "regex_matches": [],
+            "header_gaps": [
+                "[!] [Header Gap] Missing HSTS (Site vulnerable to protocol downgrade attacks)",
+                "[!] [Header Gap] Missing CSP (No defense against XSS or data injection)",
+                "[!] [Header Gap] Missing X-Frame-Options (Vulnerable to Clickjacking)",
+                "[!] [Header Gap] Missing Permissions-Policy (Browser features unrestrained)"
+            ]
+        },
+        {
+            "url": "https://medistore.se/wp-json/code-snippets/v1/snippets",
+            "status_code": 401,
+            "route_type": "Direct",
+            "size": 108,
+            "regex_matches": [],
+            "header_gaps": [
+                "[!] [Header Gap] Missing HSTS (Site vulnerable to protocol downgrade attacks)",
+                "[!] [Header Gap] Missing CSP (No defense against XSS or data injection)",
+                "[!] [Header Gap] Missing X-Frame-Options (Vulnerable to Clickjacking)",
+                "[!] [Header Gap] Missing Permissions-Policy (Browser features unrestrained)"
+            ]
+        },
+        {
+            "url": "https://medistore.se/checkout",
+            "status_code": 200,
+            "route_type": "Direct",
+            "size": 171743,
+            "regex_matches": [
+                "Email Address: ['info@medistore.se']"
+            ],
+            "header_gaps": [
+                "[!] [Header Gap] Missing HSTS (Site vulnerable to protocol downgrade attacks)",
+                "[!] [Header Gap] Missing CSP (No defense against XSS or data injection)",
+                "[!] [Header Gap] Missing X-Frame-Options (Vulnerable to Clickjacking)",
+                "[!] [Header Gap] Missing Permissions-Policy (Browser features unrestrained)"
+            ]
+        }
+    ]
+}

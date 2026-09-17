@@ -1,20 +1,103 @@
 {
-    "target": "127.0.0.1",
-    "timestamp": "2026-09-16T13:19:07.584067",
-    "services": [
+    "target": "https://medistore.se",
+    "timestamp": "2026-09-17 08:52:39",
+    "findings": [
         {
-            "host": "127.0.0.1",
-            "port": 9090,
-            "status": "open",
-            "banner": "-"
+            "module": "Component CVE Audit: commercegurus-commercekit",
+            "severity": "Info",
+            "description": "Detected Version: 2.5.2 | Advisory Match: None Recorded | Status: Secure / Patched",
+            "details": {}
+        },
+        {
+            "module": "Component CVE Audit: yith-infinite-scrolling",
+            "severity": "Info",
+            "description": "Detected Version: 2.12.0 | Advisory Match: None Recorded | Status: Secure / Patched",
+            "details": {}
+        },
+        {
+            "module": "Component CVE Audit: woocommerce-product-bundles",
+            "severity": "Info",
+            "description": "Detected Version: 8.5.12 | Advisory Match: None Recorded | Status: Secure / Patched",
+            "details": {}
+        },
+        {
+            "module": "Component CVE Audit: woo-swish-e-commerce",
+            "severity": "Info",
+            "description": "Detected Version: 3.7.8 | Advisory Match: None Recorded | Status: Secure / Patched",
+            "details": {}
+        },
+        {
+            "module": "Component CVE Audit: woocommerce",
+            "severity": "Info",
+            "description": "Detected Version: 11.1.0 | Advisory Match: None Recorded | Status: Secure / Patched",
+            "details": {}
+        },
+        {
+            "module": "Component CVE Audit: woocommerce-product-addons",
+            "severity": "Info",
+            "description": "Detected Version: 8.4.2 | Advisory Match: None Recorded | Status: Secure / Patched",
+            "details": {}
+        },
+        {
+            "module": "Component CVE Audit: woocommerce-table-rate-shipping",
+            "severity": "Info",
+            "description": "Detected Version: 3.7.3 | Advisory Match: None Recorded | Status: Secure / Patched",
+            "details": {}
+        },
+        {
+            "module": "XML-RPC Protected / Disabled",
+            "severity": "Info",
+            "description": "xmlrpc.php returned HTTP status 403, indicating restriction.",
+            "details": {}
+        },
+        {
+            "module": "Missing Security Header: strict-transport-security",
+            "severity": "Medium",
+            "description": "The target response is missing the strict-transport-security header, reducing client-side hardening.",
+            "details": {}
+        },
+        {
+            "module": "Missing Security Header: content-security-policy",
+            "severity": "Medium",
+            "description": "The target response is missing the content-security-policy header, reducing client-side hardening.",
+            "details": {}
+        },
+        {
+            "module": "Missing Security Header: x-frame-options",
+            "severity": "Low",
+            "description": "The target response is missing the x-frame-options header, reducing client-side hardening.",
+            "details": {}
+        },
+        {
+            "module": "Security Header Present: x-content-type-options",
+            "severity": "Info",
+            "description": "Header is configured. Value: nosniff...",
+            "details": {}
+        },
+        {
+            "module": "Missing Security Header: referrer-policy",
+            "severity": "Medium",
+            "description": "The target response is missing the referrer-policy header, reducing client-side hardening.",
+            "details": {}
+        },
+        {
+            "module": "Missing Security Header: permissions-policy",
+            "severity": "Medium",
+            "description": "The target response is missing the permissions-policy header, reducing client-side hardening.",
+            "details": {}
+        },
+        {
+            "module": "WAF Rate-Limit Profile Completed",
+            "severity": "Info",
+            "description": "No strict rate-limiting detected up to concurrency 25.",
+            "details": {}
         }
     ],
-    "endpoints": [
-        {
-            "url": "http://127.0.0.1:9090/config.json",
-            "status": 200,
-            "size": 19
+    "sections": {
+        "JavaScript Asset Analysis": {
+            "scripts_analyzed": 25,
+            "secrets_found": [],
+            "endpoints_discovered": []
         }
-    ],
-    "matches": []
+    }
 }
