@@ -31,15 +31,15 @@ if __name__ == "__main__":
     parser.add_argument("-o", "--output", choices=["json", "md", "both"], help="Export scan report format (json, md, or both)")
     parser.add_argument("-r", "--recursive", action="store_true", help="Enable recursive HTML link crawler/spider mode")
     
-    # New Credential Auditor flags
+    # Credential Auditor flags
     parser.add_argument("--auth-test", action="store_true", help="Run credential validation test against discovered usernames")
     parser.add_argument("--user-file", default="discovered_usernames.txt", help="Path to username file for auth testing")
-    parser.add_argument("--password", default="password123", help="Password to test against user handles")
+    parser.add_argument("--pass-file", default="passwords.txt", help="Path to password wordlist file for auth testing")
     
     args = parser.parse_args()
     
     if args.auth_test:
-        asyncio.run(run_credential_audit(args.target, args.user_file, args.password, timeout=args.timeout))
+        asyncio.run(run_credential_audit(args.target, args.user_file, args.pass_file, timeout=args.timeout))
         sys.exit(0)
     
     custom_headers = {}

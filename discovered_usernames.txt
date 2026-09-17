@@ -5,3 +5,9 @@ madelen
 24344102
 sharespine
 support_ms
+admin
+administrator
+root
+webmaster
+info
+sales
