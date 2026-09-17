@@ -172,7 +172,7 @@
             <h1>🛡️ Security Reconnaissance Report</h1>
             <div class="metadata">
                 <span><strong>Target:</strong> https://medistore.se</span>
-                <span><strong>Generated:</strong> 2026-09-17 11:03:31</span>
+                <span><strong>Generated:</strong> 2026-09-17 11:05:08</span>
                 <span><strong>Total Findings:</strong> 1</span>
             </div>
         </header>
@@ -213,9 +213,9 @@
                 <tbody>
                     
                 <tr>
-                    <td><strong>Cloud Storage Enum</strong></td>
+                    <td><strong>Subdomain Enumerator</strong></td>
                     <td><span class="badge badge-low">LOW</span></td>
-                    <td>[Google Cloud] Discovered cloud storage bucket: https://storage.googleapis.com/medistore [HTTP 403]</td>
+                    <td>Discovered active subdomain: https://www.medistore.se [HTTP 200]</td>
                 </tr>
                 
                 </tbody>
@@ -224,15 +224,14 @@
 
         <div class="card"><h2>Detailed Module Data & Payloads</h2>
             <div class="section-card">
-                <h3>Cloud Storage Enumeration Analysis</h3>
+                <h3>Subdomain Enumeration Analysis</h3>
                 <pre><code>{
-  "permutations_checked": 27,
+  "base_domain": "medistore.se",
   "findings_count": 1,
   "findings": [
     {
-      "provider": "Google Cloud",
-      "url": "https://storage.googleapis.com/medistore",
-      "status": 403,
+      "subdomain": "https://www.medistore.se",
+      "status": 200,
       "severity": "LOW"
     }
   ]

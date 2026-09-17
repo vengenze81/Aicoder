@@ -1,27 +1,25 @@
 {
     "target": "https://medistore.se",
-    "timestamp": "2026-09-17 11:03:31",
+    "timestamp": "2026-09-17 11:05:08",
     "findings": [
         {
-            "module": "Cloud Storage Enum",
+            "module": "Subdomain Enumerator",
             "severity": "LOW",
-            "description": "[Google Cloud] Discovered cloud storage bucket: https://storage.googleapis.com/medistore [HTTP 403]",
+            "description": "Discovered active subdomain: https://www.medistore.se [HTTP 200]",
             "details": {
-                "provider": "Google Cloud",
-                "url": "https://storage.googleapis.com/medistore",
-                "status_code": 403
+                "subdomain_url": "https://www.medistore.se",
+                "status_code": 200
             }
         }
     ],
     "sections": {
-        "Cloud Storage Enumeration Analysis": {
-            "permutations_checked": 27,
+        "Subdomain Enumeration Analysis": {
+            "base_domain": "medistore.se",
             "findings_count": 1,
             "findings": [
                 {
-                    "provider": "Google Cloud",
-                    "url": "https://storage.googleapis.com/medistore",
-                    "status": 403,
+                    "subdomain": "https://www.medistore.se",
+                    "status": 200,
                     "severity": "LOW"
                 }
             ]
