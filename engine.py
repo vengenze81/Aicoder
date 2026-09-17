@@ -6,6 +6,7 @@ import itertools
 from config import USER_AGENTS, WAF_SIGNATURES, PROXY_LIST
 from patterns import PATTERNS
 from headers import analyze_security_headers
+from crawler import extract_internal_links
 
 async def analyze_content(url, text, headers):
     findings = []
@@ -16,7 +17,7 @@ async def analyze_content(url, text, headers):
             findings.append((label, matches))
     return findings
 
-async def stealth_probe(client, base_url, endpoint, timeout=8.0, proxy=None, custom_headers=None, max_retries=3):
+async def stealth_probe(client, base_url, endpoint, reporter=None, timeout=8.0, proxy=None, custom_headers=None, max_retries=3):
     url = base_url.rstrip("/") + endpoint
     base_delay = 1.5
 
@@ -28,7 +29,6 @@ async def stealth_probe(client, base_url, endpoint, timeout=8.0, proxy=None, cus
             "Connection": "keep-alive"
         }
         
-        # Merge custom user-supplied headers if provided
         if custom_headers:
             headers.update(custom_headers)
         
@@ -52,38 +52,76 @@ async def stealth_probe(client, base_url, endpoint, timeout=8.0, proxy=None, cus
                 await asyncio.sleep(sleep_time)
                 continue
 
+            new_links = []
             if response.status_code not in [404, 410]:
                 route_type = f"Proxy: {proxy}" if proxy else "Direct"
                 print(f"[+] [HTTP {response.status_code}] [{route_type}] Valid: {url} (Size: {len(response.content)})")
                 
-                # Run regex body/header pattern grepping
+                regex_hits = []
                 findings = await analyze_content(url, response.text, response.headers)
                 for label, match_data in findings:
-                    print(f"    └── [MATCH FOUND] {label}: {match_data[:3]} ...")
+                    hit_str = f"{label}: {match_data[:3]}"
+                    regex_hits.append(hit_str)
+                    print(f"    └── [MATCH FOUND] {hit_str} ...")
                     
-                # Run security header & cookie hardening checks
                 header_gaps = analyze_security_headers(url, response.headers)
                 for gap in header_gaps:
                     print(f"    └── {gap}")
-            return
+                
+                content_type = response.headers.get("content-type", "")
+                if "text/html" in content_type:
+                    new_links = extract_internal_links(base_url, response.text)
+                
+                if reporter:
+                    reporter.add_result(
+                        url=url,
+                        status_code=response.status_code,
+                        route_type=route_type,
+                        size=len(response.content),
+                        regex_matches=regex_hits,
+                        header_gaps=header_gaps
+                    )
+            return response.status_code, new_links
             
         except (httpx.RequestError, asyncio.TimeoutError) as e:
             if attempt == max_retries - 1:
                 print(f"[-] [Error] Failed to reach {url} via {proxy or 'Direct'}: {e}")
             await asyncio.sleep(2)
+            
+    return None, []
 
-async def run_stealth_scanner(target_url, endpoints, concurrency=5, timeout=8.0, custom_headers=None):
+async def run_stealth_scanner(target_url, endpoints, recursive=False, max_crawl=40, reporter=None, concurrency=5, timeout=8.0, custom_headers=None):
     limits = httpx.Limits(max_keepalive_connections=concurrency, max_connections=concurrency * 2)
     proxy_cycle = itertools.cycle(PROXY_LIST) if PROXY_LIST else None
+
+    visited = set()
+    queue = list(endpoints)
 
     async with httpx.AsyncClient(limits=limits) as client:
         semaphore = asyncio.Semaphore(concurrency)
         
-        async def bounded_probe(ep):
+        async def process_endpoint(ep):
+            if ep in visited:
+                return
+            visited.add(ep)
+            
             async with semaphore:
                 proxy = next(proxy_cycle) if proxy_cycle else None
-                await stealth_probe(client, target_url, ep, timeout=timeout, proxy=proxy, custom_headers=custom_headers)
-                await asyncio.sleep(random.uniform(0.2, 0.6))
+                status, new_links = await stealth_probe(
+                    client, target_url, ep, reporter=reporter, 
+                    timeout=timeout, proxy=proxy, custom_headers=custom_headers
+                )
+                await asyncio.sleep(random.uniform(0.1, 0.3))
+                
+                if recursive and new_links and len(visited) < max_crawl:
+                    for link in new_links:
+                        if link not in visited and link not in queue:
+                            queue.append(link)
+                            print(f"    └── [Crawler] Discovered & queued new path: {link}")
 
-        tasks = [bounded_probe(ep) for ep in endpoints]
-        await asyncio.gather(*tasks)
+        while queue and len(visited) < max_crawl:
+            batch = queue[:concurrency * 2]
+            del queue[:len(batch)]
+            
+            tasks = [process_endpoint(ep) for ep in batch]
+            await asyncio.gather(*tasks)
