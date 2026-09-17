@@ -1,0 +1,71 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Red Team Engagement Report - medistore.se</title>
+    <style>
+        body { font-family: Helvetica, Arial, sans-serif; color: #1e293b; font-size: 10pt; line-height: 1.5; background-color: #f8fafc; margin: 0; padding: 20px; max-width: 800px; margin: auto; }
+        .header-banner { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #ffffff; padding: 24px 28px; border-radius: 6px; margin-bottom: 24px; border-left: 6px solid #b91c1c; }
+        .header-banner h1 { margin: 0 0 6px 0; font-size: 20pt; }
+        .subtitle { font-size: 10pt; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; }
+        h2 { color: #0f172a; font-size: 13pt; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px; margin-top: 24px; margin-bottom: 12px; text-transform: uppercase; }
+        .card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 14px 18px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.02); }
+        .card-title { font-weight: bold; color: #0f172a; margin-bottom: 6px; font-size: 11pt; display: flex; justify-content: space-between; }
+        .badge { background: #fee2e2; color: #991b1b; padding: 2px 8px; border-radius: 4px; font-size: 8pt; font-weight: bold; text-transform: uppercase; }
+        .badge-success { background: #dcfce7; color: #166534; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 9.5pt; }
+        th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #e2e8f0; }
+        th { background: #f1f5f9; color: #334155; font-size: 8.5pt; text-transform: uppercase; }
+        pre { background: #0f172a; color: #e2e8f0; padding: 10px 12px; border-radius: 4px; font-size: 8.5pt; overflow-x: auto; }
+        .summary-stats { display: table; width: 100%; margin-bottom: 20px; }
+        .stat-box { display: table-cell; width: 25%; background: #ffffff; border: 1px solid #e2e8f0; padding: 12px; text-align: center; border-radius: 4px; }
+        .stat-box + .stat-box { border-left: none; }
+        .stat-number { font-size: 16pt; font-weight: bold; color: #b91c1c; }
+        .stat-label { font-size: 8pt; color: #64748b; text-transform: uppercase; }
+    </style>
+</head>
+<body>
+    <div class="header-banner">
+        <h1>Red Team Engagement Report</h1>
+        <div class="subtitle">Target: https://medistore.se | Automated Operator Assessment</div>
+    </div>
+
+    <h2>Executive Summary</h2>
+    <p>This report documents findings and telemetry acquired during the automated red team simulation against <strong>https://medistore.se</strong> using a custom native HTTP proxy and C2 framework.</p>
+
+    <div class="summary-stats">
+        <div class="stat-box"><div class="stat-number">3</div><div class="stat-label">Credentials Skimmed</div></div>
+        <div class="stat-box"><div class="stat-number">1</div><div class="stat-label">Database Dumps</div></div>
+        <div class="stat-box"><div class="stat-number">1</div><div class="stat-label">Backdoors Deployed</div></div>
+        <div class="stat-box"><div class="stat-number">5</div><div class="stat-label">Total Events</div></div>
+    </div>
+
+    <h2>Exfiltrated Loot & Telemetry Log</h2>
+
+    <div class="card">
+        <div class="card-title"><span>Event #1: FORM_SUBMISSION</span><span class="badge">Administrator</span></div>
+        <p><strong>Target URL:</strong> <code>https://medistore.se/wp-login.php</code></p>
+    <table><tr><th>Field Name</th><th>Captured Value</th></tr><tr><td><code>log</code></td><td><strong>audit_admin</strong></td></tr><tr><td><code>pwd</code></td><td><strong>SecurePassword2026!</strong></td></tr></table></div>
+    <div class="card">
+        <div class="card-title"><span>Event #2: FORM_SUBMISSION</span><span class="badge">Administrator</span></div>
+        <p><strong>Target URL:</strong> <code>https://medistore.se/wp-login.php</code></p>
+    <table><tr><th>Field Name</th><th>Captured Value</th></tr><tr><td><code>log</code></td><td><strong>audit_admin</strong></td></tr><tr><td><code>pwd</code></td><td><strong>SecurePassword2026!</strong></td></tr></table></div>
+    <div class="card">
+        <div class="card-title"><span>Event #3: WOO_CUSTOMER_DUMP</span><span class="badge">Administrator</span></div>
+        <p><strong>Target URL:</strong> <code>https://medistore.se/wp-admin/admin.php?page=wc-admin</code></p>
+    <p><strong>Records Acquired:</strong> 1 entries</p><pre>{
+  "id": 201,
+  "email": "vip_customer@medistore.se",
+  "first_name": "Erik",
+  "last_name": "Johansson",
+  "role": "customer"
+}</pre></div>
+    <div class="card">
+        <div class="card-title"><span>Event #4: FORM_SUBMISSION</span><span class="badge badge-success">Customer</span></div>
+        <p><strong>Target URL:</strong> <code>https://medistore.se/checkout/</code></p>
+    <table><tr><th>Field Name</th><th>Captured Value</th></tr><tr><td><code>billing_first_name</code></td><td><strong>Anna</strong></td></tr><tr><td><code>billing_last_name</code></td><td><strong>Svensson</strong></td></tr><tr><td><code>billing_email</code></td><td><strong>anna.svensson@example.com</strong></td></tr><tr><td><code>billing_phone</code></td><td><strong>+46701234567</strong></td></tr></table></div>
+    <div class="card">
+        <div class="card-title"><span>Event #5: PERSISTENCE_ESTABLISHED</span><span class="badge">Administrator</span></div>
+        <p><strong>Target URL:</strong> <code>https://medistore.se/wp-admin/</code></p>
+    <p><strong>Backdoor Account:</strong> ID 15 (wp_system_sync)</p></div></body></html>

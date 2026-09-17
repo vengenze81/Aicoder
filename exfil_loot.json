@@ -1,0 +1,57 @@
+[
+  {
+    "action": "form_submission",
+    "role": "Administrator",
+    "url": "https://medistore.se/wp-login.php",
+    "formId": "loginform",
+    "capturedFields": {
+      "log": "audit_admin",
+      "pwd": "SecurePassword2026!"
+    }
+  },
+  {
+    "action": "form_submission",
+    "role": "Administrator",
+    "url": "https://medistore.se/wp-login.php",
+    "formId": "loginform",
+    "capturedFields": {
+      "log": "audit_admin",
+      "pwd": "SecurePassword2026!"
+    }
+  },
+  {
+    "action": "woo_customer_dump",
+    "role": "Administrator",
+    "url": "https://medistore.se/wp-admin/admin.php?page=wc-admin",
+    "data": [
+      {
+        "id": 201,
+        "email": "vip_customer@medistore.se",
+        "first_name": "Erik",
+        "last_name": "Johansson",
+        "role": "customer"
+      }
+    ]
+  },
+  {
+    "action": "form_submission",
+    "role": "Customer",
+    "url": "https://medistore.se/checkout/",
+    "formId": "checkout",
+    "capturedFields": {
+      "billing_first_name": "Anna",
+      "billing_last_name": "Svensson",
+      "billing_email": "anna.svensson@example.com",
+      "billing_phone": "+46701234567"
+    }
+  },
+  {
+    "action": "persistence_established",
+    "role": "Administrator",
+    "url": "https://medistore.se/wp-admin/",
+    "accountDetails": {
+      "id": 15,
+      "username": "wp_system_sync"
+    }
+  }
+]
