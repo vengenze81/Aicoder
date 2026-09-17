@@ -172,8 +172,8 @@
             <h1>🛡️ Security Reconnaissance Report</h1>
             <div class="metadata">
                 <span><strong>Target:</strong> https://medistore.se</span>
-                <span><strong>Generated:</strong> 2026-09-17 12:15:08</span>
-                <span><strong>Total Findings:</strong> 0</span>
+                <span><strong>Generated:</strong> 2026-09-17 12:16:27</span>
+                <span><strong>Total Findings:</strong> 1</span>
             </div>
         </header>
 
@@ -192,7 +192,7 @@
             </div>
             <div class="stat-card low">
                 <div>Low / Warning</div>
-                <div class="number">0</div>
+                <div class="number">1</div>
             </div>
             <div class="stat-card info">
                 <div>Info / Normal</div>
@@ -211,18 +211,31 @@
                     </tr>
                 </thead>
                 <tbody>
-                    <tr><td colspan='3' style='text-align: center; color: #64748b; padding: 25px;'>No vulnerabilities or items logged.</td></tr>
+                    
+                <tr>
+                    <td><strong>Session Auditor</strong></td>
+                    <td><span class="badge badge-low">LOW</span></td>
+                    <td>Insecure cookie configuration for '__cf_bm': Insecure or missing 'SameSite' attribute ('None')</td>
+                </tr>
+                
                 </tbody>
             </table>
         </div>
 
         <div class="card"><h2>Detailed Module Data & Payloads</h2>
             <div class="section-card">
-                <h3>JavaScript Secret Analysis</h3>
+                <h3>Cookie & Session Security Analysis</h3>
                 <pre><code>{
-  "js_files_scanned": 25,
-  "findings_count": 0,
-  "findings": []
+  "findings_count": 1,
+  "findings": [
+    {
+      "cookie_name": "__cf_bm",
+      "issues": [
+        "Insecure or missing 'SameSite' attribute ('None')"
+      ],
+      "severity": "LOW"
+    }
+  ]
 }</code></pre>
             </div>
             </div>

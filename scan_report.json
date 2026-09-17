@@ -1,12 +1,32 @@
 {
     "target": "https://medistore.se",
-    "timestamp": "2026-09-17 12:15:08",
-    "findings": [],
+    "timestamp": "2026-09-17 12:16:27",
+    "findings": [
+        {
+            "module": "Session Auditor",
+            "severity": "LOW",
+            "description": "Insecure cookie configuration for '__cf_bm': Insecure or missing 'SameSite' attribute ('None')",
+            "details": {
+                "cookie": "__cf_bm",
+                "raw": "__cf_bm=.8n6g4Uolpa4Q0EKsVGRpM5Gap_jspe0arn2e_hwl8E-1789640189.9005342-1.0.1.1-UdojM40rp_VJk6i4ERJsOw6QPND6a9BdTRA4X.lK6YrOZ_xE3f1N6pJmXuppo_c9A9l24qGL23XWtwrqZ2fdRsxkmkx7XthkR3Ao6H07WCwpQG3Xd1aCSY90kL1CTJSn; HttpOnly; SameSite=None; Secure; Path=/; Domain=medistore.se; Expires=Thu, 17 Sep 2026 10:46:30 GMT",
+                "issues": [
+                    "Insecure or missing 'SameSite' attribute ('None')"
+                ]
+            }
+        }
+    ],
     "sections": {
-        "JavaScript Secret Analysis": {
-            "js_files_scanned": 25,
-            "findings_count": 0,
-            "findings": []
+        "Cookie & Session Security Analysis": {
+            "findings_count": 1,
+            "findings": [
+                {
+                    "cookie_name": "__cf_bm",
+                    "issues": [
+                        "Insecure or missing 'SameSite' attribute ('None')"
+                    ],
+                    "severity": "LOW"
+                }
+            ]
         }
     }
 }
