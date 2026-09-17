@@ -3,6 +3,10 @@ import asyncio
 import argparse
 from engine import run_stealth_scanner
 from auth_tester import run_credential_audit
+from vuln_scanner import scan_wordpress_plugins
+from api_fuzzer import fuzz_api_endpoints
+from file_scanner import scan_sensitive_files
+from xmlrpc_tester import test_xmlrpc
 from reporter import ScanReporter
 from config import PROXY_LIST
 
@@ -31,15 +35,57 @@ if __name__ == "__main__":
     parser.add_argument("-o", "--output", choices=["json", "md", "both"], help="Export scan report format (json, md, or both)")
     parser.add_argument("-r", "--recursive", action="store_true", help="Enable recursive HTML link crawler/spider mode")
     
-    # Credential Auditor flags
+    # Audit modules
     parser.add_argument("--auth-test", action="store_true", help="Run credential validation test against discovered usernames")
     parser.add_argument("--user-file", default="discovered_usernames.txt", help="Path to username file for auth testing")
     parser.add_argument("--pass-file", default="passwords.txt", help="Path to password wordlist file for auth testing")
+    parser.add_argument("--vuln-scan", action="store_true", help="Run WooCommerce/WordPress plugin fingerprinting & risk analysis")
+    parser.add_argument("--api-fuzz", action="store_true", help="Run WordPress & WooCommerce REST API endpoint fuzzer")
+    parser.add_argument("--file-scan", action="store_true", help="Run sensitive file and backup exposure scanner")
+    parser.add_argument("--xmlrpc-test", action="store_true", help="Run WordPress XML-RPC endpoint and method availability probe")
     
     args = parser.parse_args()
     
+    reporter = ScanReporter(args.target) if args.output else None
+    
     if args.auth_test:
         asyncio.run(run_credential_audit(args.target, args.user_file, args.pass_file, timeout=args.timeout))
+        sys.exit(0)
+        
+    if args.vuln_scan:
+        asyncio.run(scan_wordpress_plugins(args.target, timeout=args.timeout, reporter=reporter))
+        if reporter:
+            if args.output in ["json", "both"]:
+                reporter.save_json()
+            if args.output in ["md", "both"]:
+                reporter.save_markdown()
+        sys.exit(0)
+        
+    if args.api_fuzz:
+        asyncio.run(fuzz_api_endpoints(args.target, timeout=args.timeout, reporter=reporter))
+        if reporter:
+            if args.output in ["json", "both"]:
+                reporter.save_json()
+            if args.output in ["md", "both"]:
+                reporter.save_markdown()
+        sys.exit(0)
+        
+    if args.file_scan:
+        asyncio.run(scan_sensitive_files(args.target, timeout=args.timeout, reporter=reporter))
+        if reporter:
+            if args.output in ["json", "both"]:
+                reporter.save_json()
+            if args.output in ["md", "both"]:
+                reporter.save_markdown()
+        sys.exit(0)
+        
+    if args.xmlrpc_test:
+        asyncio.run(test_xmlrpc(args.target, timeout=args.timeout, reporter=reporter))
+        if reporter:
+            if args.output in ["json", "both"]:
+                reporter.save_json()
+            if args.output in ["md", "both"]:
+                reporter.save_markdown()
         sys.exit(0)
     
     custom_headers = {}
@@ -51,8 +97,6 @@ if __name__ == "__main__":
                 
     test_endpoints = load_wordlist(args.wordlist)
     proxy_status = f"{len(PROXY_LIST)} proxies loaded" if PROXY_LIST else "Direct mode (No proxies configured)"
-    
-    reporter = ScanReporter(args.target) if args.output else None
     
     print(f"[*] Initializing Modular Stealth Engine")
     print(f"[*] Target Domain: {args.target}")
