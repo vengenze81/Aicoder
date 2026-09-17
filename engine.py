@@ -5,6 +5,7 @@ import re
 import itertools
 from config import USER_AGENTS, WAF_SIGNATURES, PROXY_LIST
 from patterns import PATTERNS
+from headers import analyze_security_headers
 
 async def analyze_content(url, text, headers):
     findings = []
@@ -51,9 +52,15 @@ async def stealth_probe(client, base_url, endpoint, proxy=None, max_retries=3):
                 route_type = f"Proxy: {proxy}" if proxy else "Direct"
                 print(f"[+] [HTTP {response.status_code}] [{route_type}] Valid: {url} (Size: {len(response.content)})")
                 
+                # Run regex body/header pattern grepping
                 findings = await analyze_content(url, response.text, response.headers)
                 for label, match_data in findings:
                     print(f"    └── [MATCH FOUND] {label}: {match_data[:3]} ...")
+                    
+                # Run security header & cookie hardening checks
+                header_gaps = analyze_security_headers(url, response.headers)
+                for gap in header_gaps:
+                    print(f"    └── {gap}")
             return
             
         except (httpx.RequestError, asyncio.TimeoutError) as e:
