@@ -69,9 +69,11 @@ async def main():
         print("\n[*] Executing JavaScript Secret & Endpoint Extractor...")
         await extract_javascript_assets(target_url, reporter=reporter)
 
+    # Save all report formats
     reporter.save_markdown()
     reporter.save_json()
-    print(f"\n[+] Audit completed. Reports saved to scan_report.md and scan_report.json")
+    reporter.save_html()
+    print(f"\n[+] Audit completed. Reports saved to scan_report.md, scan_report.json, and scan_report.html")
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
