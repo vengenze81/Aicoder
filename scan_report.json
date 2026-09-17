@@ -1,26 +1,67 @@
 {
     "target": "https://medistore.se",
-    "timestamp": "2026-09-17 11:05:08",
+    "timestamp": "2026-09-17 11:08:39",
     "findings": [
         {
-            "module": "Subdomain Enumerator",
-            "severity": "LOW",
-            "description": "Discovered active subdomain: https://www.medistore.se [HTTP 200]",
+            "module": "Header Auditor",
+            "severity": "MEDIUM",
+            "description": "HSTS missing (Vulnerable to protocol downgrade attacks)",
             "details": {
-                "subdomain_url": "https://www.medistore.se",
-                "status_code": 200
+                "missing_header": "Strict-Transport-Security"
+            }
+        },
+        {
+            "module": "Header Auditor",
+            "severity": "MEDIUM",
+            "description": "CSP missing (Vulnerable to XSS and data injection)",
+            "details": {
+                "missing_header": "Content-Security-Policy"
+            }
+        },
+        {
+            "module": "Header Auditor",
+            "severity": "LOW",
+            "description": "X-Frame-Options missing (Vulnerable to clickjacking)",
+            "details": {
+                "missing_header": "X-Frame-Options"
+            }
+        },
+        {
+            "module": "Header Auditor",
+            "severity": "LOW",
+            "description": "Referrer-Policy missing (Potential information leakage in referrer header)",
+            "details": {
+                "missing_header": "Referrer-Policy"
             }
         }
     ],
     "sections": {
-        "Subdomain Enumeration Analysis": {
-            "base_domain": "medistore.se",
-            "findings_count": 1,
+        "HTTP Security Header Analysis": {
+            "findings_count": 4,
             "findings": [
                 {
-                    "subdomain": "https://www.medistore.se",
-                    "status": 200,
-                    "severity": "LOW"
+                    "header": "Strict-Transport-Security",
+                    "status": "Missing",
+                    "severity": "MEDIUM",
+                    "description": "HSTS missing (Vulnerable to protocol downgrade attacks)"
+                },
+                {
+                    "header": "Content-Security-Policy",
+                    "status": "Missing",
+                    "severity": "MEDIUM",
+                    "description": "CSP missing (Vulnerable to XSS and data injection)"
+                },
+                {
+                    "header": "X-Frame-Options",
+                    "status": "Missing",
+                    "severity": "LOW",
+                    "description": "X-Frame-Options missing (Vulnerable to clickjacking)"
+                },
+                {
+                    "header": "Referrer-Policy",
+                    "status": "Missing",
+                    "severity": "LOW",
+                    "description": "Referrer-Policy missing (Potential information leakage in referrer header)"
                 }
             ]
         }
