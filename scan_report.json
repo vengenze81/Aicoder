@@ -1,69 +1,11 @@
 {
     "target": "https://medistore.se",
-    "timestamp": "2026-09-17 11:08:39",
-    "findings": [
-        {
-            "module": "Header Auditor",
-            "severity": "MEDIUM",
-            "description": "HSTS missing (Vulnerable to protocol downgrade attacks)",
-            "details": {
-                "missing_header": "Strict-Transport-Security"
-            }
-        },
-        {
-            "module": "Header Auditor",
-            "severity": "MEDIUM",
-            "description": "CSP missing (Vulnerable to XSS and data injection)",
-            "details": {
-                "missing_header": "Content-Security-Policy"
-            }
-        },
-        {
-            "module": "Header Auditor",
-            "severity": "LOW",
-            "description": "X-Frame-Options missing (Vulnerable to clickjacking)",
-            "details": {
-                "missing_header": "X-Frame-Options"
-            }
-        },
-        {
-            "module": "Header Auditor",
-            "severity": "LOW",
-            "description": "Referrer-Policy missing (Potential information leakage in referrer header)",
-            "details": {
-                "missing_header": "Referrer-Policy"
-            }
-        }
-    ],
+    "timestamp": "2026-09-17 12:07:36",
+    "findings": [],
     "sections": {
-        "HTTP Security Header Analysis": {
-            "findings_count": 4,
-            "findings": [
-                {
-                    "header": "Strict-Transport-Security",
-                    "status": "Missing",
-                    "severity": "MEDIUM",
-                    "description": "HSTS missing (Vulnerable to protocol downgrade attacks)"
-                },
-                {
-                    "header": "Content-Security-Policy",
-                    "status": "Missing",
-                    "severity": "MEDIUM",
-                    "description": "CSP missing (Vulnerable to XSS and data injection)"
-                },
-                {
-                    "header": "X-Frame-Options",
-                    "status": "Missing",
-                    "severity": "LOW",
-                    "description": "X-Frame-Options missing (Vulnerable to clickjacking)"
-                },
-                {
-                    "header": "Referrer-Policy",
-                    "status": "Missing",
-                    "severity": "LOW",
-                    "description": "Referrer-Policy missing (Potential information leakage in referrer header)"
-                }
-            ]
+        "API Endpoint Analysis": {
+            "findings_count": 0,
+            "findings": []
         }
     }
 }
