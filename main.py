@@ -13,10 +13,11 @@ from subdomain_enum import enumerate_subdomains
 from port_scanner import scan_ports
 from api_discover import discover_api_endpoints
 from ssl_scanner import audit_ssl_certificate
+from vuln_fuzzer import run_offensive_fuzz
 from reporter import ScanReporter
 
 async def main():
-    parser = argparse.ArgumentParser(description="Modular Async Security Reconnaissance Framework")
+    parser = argparse.ArgumentParser(description="Modular Async Security Reconnaissance & Offensive Framework")
     parser.add_argument("target", help="Target URL (e.g., https://medistore.se)")
     parser.add_argument("--vuln-scan", action="store_true", help="Run WordPress plugin vulnerability scan")
     parser.add_argument("--file-scan", action="store_true", help="Run sensitive file & backup scanner")
@@ -29,6 +30,7 @@ async def main():
     parser.add_argument("--port-scan", action="store_true", help="Run async port and service banner scan")
     parser.add_argument("--api-discover", action="store_true", help="Discover API documentation and endpoints")
     parser.add_argument("--ssl-scan", action="store_true", help="Audit SSL/TLS certificate and cipher suites")
+    parser.add_argument("--vuln-fuzz", action="store_true", help="Run offensive vulnerability fuzzer (SQLi, LFI, XSS)")
     parser.add_argument("--all", action="store_true", help="Run all security modules sequentially")
 
     args = parser.parse_args()
@@ -36,6 +38,10 @@ async def main():
     reporter = ScanReporter(target_url)
 
     print(f"[*] Initializing security scan framework against: {target_url}")
+
+    if args.all or args.vuln_fuzz:
+        print("\n[*] Executing Offensive Vulnerability Fuzzer...")
+        await run_offensive_fuzz(target_url, reporter=reporter)
 
     if args.all or args.ssl_scan:
         print("\n[*] Executing SSL/TLS Certificate Audit...")

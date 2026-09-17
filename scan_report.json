@@ -1,37 +1,12 @@
 {
     "target": "https://medistore.se",
-    "timestamp": "2026-09-17 10:41:12",
-    "findings": [
-        {
-            "module": "SSL/TLS Auditor",
-            "severity": "INFO",
-            "description": "Secure TLS version active: TLSv1.3",
-            "details": {
-                "tls_version": "TLSv1.3",
-                "cipher": [
-                    "TLS_AES_256_GCM_SHA384",
-                    "TLSv1.3",
-                    256
-                ],
-                "subject": {},
-                "issuer": {},
-                "not_before": null,
-                "not_after": null
-            }
-        }
-    ],
+    "timestamp": "2026-09-17 10:45:03",
+    "findings": [],
     "sections": {
-        "SSL/TLS Certificate Analysis": {
-            "tls_version": "TLSv1.3",
-            "cipher": [
-                "TLS_AES_256_GCM_SHA384",
-                "TLSv1.3",
-                256
-            ],
-            "subject": {},
-            "issuer": {},
-            "not_before": null,
-            "not_after": null
+        "Offensive Fuzzer Analysis": {
+            "target": "https://medistore.se",
+            "findings_count": 0,
+            "findings": []
         }
     }
 }
