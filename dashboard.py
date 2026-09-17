@@ -5,21 +5,7 @@ from textual.app import App, ComposeResult
 from textual.widgets import Header, Footer, Button, Input, RichLog, Static
 from textual.containers import Container, Horizontal, Vertical
 
-# Import all core framework modules including GraphQL Auditor
-from vuln_scanner import scan_wordpress_plugins
-from file_scanner import scan_sensitive_files
-from xmlrpc_tester import test_xmlrpc
-from header_scanner import scan_security_headers
-from waf_profiler import profile_waf
-from auth_tester import run_credential_audit
-from js_extractor import extract_javascript_assets
-from subdomain_enum import enumerate_subdomains
-from port_scanner import scan_ports
-from api_discover import discover_api_endpoints
-from ssl_scanner import audit_ssl_certificate
-from vuln_fuzzer import run_offensive_fuzz
-from dir_brute import run_dir_brute
-from graphql_auditor import run_graphql_audit
+from core.plugin_manager import PluginManager
 from reporter import ScanReporter
 
 class StreamToLog(io.TextIOBase):
@@ -71,6 +57,8 @@ class SecurityDashboard(App):
 
     def __init__(self):
         super().__init__()
+        self.plugin_manager = PluginManager()
+        self.plugins = self.plugin_manager.discover_plugins()
         self.current_task = None
 
     def compose(self) -> ComposeResult:
@@ -80,22 +68,14 @@ class SecurityDashboard(App):
             yield Input(value="https://medistore.se", id="target-input")
         with Horizontal(id="main-content"):
             with Vertical(id="sidebar"):
-                yield Static("[bold red]Offensive Modules[/bold red]\n")
-                yield Button("1. Offensive Vuln Fuzzer", id="btn-fuzz", variant="error")
-                yield Button("2. Directory Brute-Force", id="btn-brute", variant="error")
-                yield Button("3. GraphQL Auditor", id="btn-graphql", variant="error")
-                yield Static("\n[bold cyan]Recon Modules[/bold cyan]\n")
-                yield Button("4. SSL/TLS Audit", id="btn-ssl", variant="primary")
-                yield Button("5. API Discovery", id="btn-api", variant="primary")
-                yield Button("6. Port Scanner", id="btn-port", variant="primary")
-                yield Button("7. Subdomain Enum", id="btn-sub", variant="primary")
-                yield Button("8. Plugin Vuln Scan", id="btn-vuln", variant="primary")
-                yield Button("9. Sensitive Files", id="btn-file", variant="primary")
-                yield Button("10. XML-RPC Probe", id="btn-xmlrpc", variant="primary")
-                yield Button("11. Header Audit", id="btn-header", variant="primary")
-                yield Button("12. WAF Profiler", id="btn-waf", variant="primary")
-                yield Button("13. Credential Audit", id="btn-auth", variant="warning")
-                yield Button("14. JS Extractor", id="btn-js", variant="primary")
+                yield Static("[bold red]Dynamic Plugin Registry[/bold red]\n")
+                
+                # Dynamically generate buttons for each loaded plugin
+                for p_id, p_info in self.plugins.items():
+                    meta = p_info["meta"]
+                    variant = "error" if meta.get("category") == "offensive" else "primary"
+                    yield Button(meta["name"], id=f"plugin-{p_id}", variant=variant)
+                
                 yield Static("\n")
                 yield Button("🛑 Abort Current Scan", id="btn-cancel", variant="error")
             yield RichLog(id="log-view", highlight=True, markup=True)
@@ -120,63 +100,26 @@ class SecurityDashboard(App):
         target_input = self.query_one("#target-input", Input)
         target_url = target_input.value.strip()
 
-        self.current_task = asyncio.create_task(self.run_module_task(button_id, target_url, log))
+        if button_id.startswith("plugin-"):
+            plugin_id = button_id.replace("plugin-", "")
+            if plugin_id in self.plugins:
+                self.current_task = asyncio.create_task(self.run_plugin_task(plugin_id, target_url, log))
 
-    async def run_module_task(self, button_id, target_url, log):
+    async def run_plugin_task(self, plugin_id, target_url, log):
+        plugin = self.plugins[plugin_id]
+        meta = plugin["meta"]
         reporter = ScanReporter(target_url)
         old_stdout = sys.stdout
         sys.stdout = StreamToLog(log)
 
-        log.write(f"[bold cyan]>>> Initializing background task against target: {target_url}[/bold cyan]")
+        log.write(f"[bold cyan]>>> Executing Plugin [{meta['name']}]: {target_url}[/bold cyan]")
 
         try:
-            if button_id == "btn-fuzz":
-                log.write("[red]Executing Offensive Vulnerability Fuzzer (SQLi, LFI, XSS)...[/red]")
-                await run_offensive_fuzz(target_url, reporter=reporter)
-            elif button_id == "btn-brute":
-                log.write("[red]Executing Async Directory & Content Brute-Forcer...[/red]")
-                await run_dir_brute(target_url, reporter=reporter)
-            elif button_id == "btn-graphql":
-                log.write("[red]Executing GraphQL Introspection & Schema Auditor...[/red]")
-                await run_graphql_audit(target_url, reporter=reporter)
-            elif button_id == "btn-ssl":
-                log.write("[yellow]Executing SSL/TLS Certificate & Transport Auditor...[/yellow]")
-                await audit_ssl_certificate(target_url, reporter=reporter)
-            elif button_id == "btn-api":
-                log.write("[yellow]Executing API Endpoint & Documentation Discovery...[/yellow]")
-                await discover_api_endpoints(target_url, reporter=reporter)
-            elif button_id == "btn-port":
-                log.write("[yellow]Executing Async Port & Banner Scanner...[/yellow]")
-                await scan_ports(target_url, reporter=reporter)
-            elif button_id == "btn-sub":
-                log.write("[yellow]Executing Subdomain Enumeration Module...[/yellow]")
-                await enumerate_subdomains(target_url, reporter=reporter)
-            elif button_id == "btn-vuln":
-                log.write("[yellow]Executing WordPress Plugin Vulnerability Fingerprinter...[/yellow]")
-                await scan_wordpress_plugins(target_url, reporter=reporter)
-            elif button_id == "btn-file":
-                log.write("[yellow]Executing Sensitive File & Backup Scanner...[/yellow]")
-                await scan_sensitive_files(target_url, reporter=reporter)
-            elif button_id == "btn-xmlrpc":
-                log.write("[yellow]Executing XML-RPC Endpoint Probe...[/yellow]")
-                await test_xmlrpc(target_url, reporter=reporter)
-            elif button_id == "btn-header":
-                log.write("[yellow]Executing HTTP Security Headers Audit...[/yellow]")
-                await scan_security_headers(target_url, reporter=reporter)
-            elif button_id == "btn-waf":
-                log.write("[yellow]Executing WAF Rate-Limit Concurrency Profiler...[/yellow]")
-                await profile_waf(target_url, reporter=reporter)
-            elif button_id == "btn-auth":
-                log.write("[yellow]Executing Credential Audit...[/yellow]")
-                await run_credential_audit(target_url, "discovered_usernames.txt", "passwords.txt", timeout=8.0)
-            elif button_id == "btn-js":
-                log.write("[yellow]Executing JavaScript Asset & Secret Extractor...[/yellow]")
-                await extract_javascript_assets(target_url, reporter=reporter)
-            
+            await plugin["run"](target_url, reporter=reporter)
             reporter.save_markdown()
             reporter.save_json()
             reporter.save_html()
-            log.write("[bold green]<<< Module execution finished. Reports saved to Markdown, JSON, and HTML.[/bold green]")
+            log.write(f"[bold green]<<< Plugin '{meta['name']}' finished. Reports updated.[/bold green]")
         except asyncio.CancelledError:
             log.write("[bold red][-] Task cancelled gracefully.[/bold red]")
         except Exception as e:

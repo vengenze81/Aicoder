@@ -1,12 +1,11 @@
 {
     "target": "https://medistore.se",
-    "timestamp": "2026-09-17 10:50:49",
+    "timestamp": "2026-09-17 10:56:32",
     "findings": [],
     "sections": {
-        "GraphQL Audit Analysis": {
+        "WAF Profile Analysis": {
             "target": "https://medistore.se",
-            "findings_count": 0,
-            "findings": []
+            "waf_triggered": false
         }
     }
 }
