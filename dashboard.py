@@ -5,7 +5,7 @@ from textual.app import App, ComposeResult
 from textual.widgets import Header, Footer, Button, Input, RichLog, Static
 from textual.containers import Container, Horizontal, Vertical
 
-# Import all core framework modules including JS Extractor
+# Import all core framework modules including Subdomain Enum
 from vuln_scanner import scan_wordpress_plugins
 from file_scanner import scan_sensitive_files
 from xmlrpc_tester import test_xmlrpc
@@ -13,6 +13,7 @@ from header_scanner import scan_security_headers
 from waf_profiler import profile_waf
 from auth_tester import run_credential_audit
 from js_extractor import extract_javascript_assets
+from subdomain_enum import enumerate_subdomains
 from reporter import ScanReporter
 
 class StreamToLog(io.TextIOBase):
@@ -74,13 +75,14 @@ class SecurityDashboard(App):
         with Horizontal(id="main-content"):
             with Vertical(id="sidebar"):
                 yield Static("[bold cyan]Audit Modules[/bold cyan]\n")
-                yield Button("1. Plugin Vuln Scan", id="btn-vuln", variant="primary")
-                yield Button("2. Sensitive Files", id="btn-file", variant="primary")
-                yield Button("3. XML-RPC Probe", id="btn-xmlrpc", variant="primary")
-                yield Button("4. Header Audit", id="btn-header", variant="primary")
-                yield Button("5. WAF Profiler", id="btn-waf", variant="primary")
-                yield Button("6. Credential Audit", id="btn-auth", variant="warning")
-                yield Button("7. JS Secret Extractor", id="btn-js", variant="primary")
+                yield Button("1. Subdomain Enum", id="btn-sub", variant="primary")
+                yield Button("2. Plugin Vuln Scan", id="btn-vuln", variant="primary")
+                yield Button("3. Sensitive Files", id="btn-file", variant="primary")
+                yield Button("4. XML-RPC Probe", id="btn-xmlrpc", variant="primary")
+                yield Button("5. Header Audit", id="btn-header", variant="primary")
+                yield Button("6. WAF Profiler", id="btn-waf", variant="primary")
+                yield Button("7. Credential Audit", id="btn-auth", variant="warning")
+                yield Button("8. JS Secret Extractor", id="btn-js", variant="primary")
                 yield Static("\n")
                 yield Button("🛑 Abort Current Scan", id="btn-cancel", variant="error")
             yield RichLog(id="log-view", highlight=True, markup=True)
@@ -115,7 +117,10 @@ class SecurityDashboard(App):
         log.write(f"[bold cyan]>>> Initializing background task against target: {target_url}[/bold cyan]")
 
         try:
-            if button_id == "btn-vuln":
+            if button_id == "btn-sub":
+                log.write("[yellow]Executing Subdomain Enumeration Module...[/yellow]")
+                await enumerate_subdomains(target_url, reporter=reporter)
+            elif button_id == "btn-vuln":
                 log.write("[yellow]Executing WordPress Plugin Vulnerability Fingerprinter...[/yellow]")
                 await scan_wordpress_plugins(target_url, reporter=reporter)
             elif button_id == "btn-file":

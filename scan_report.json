@@ -1,55 +1,7 @@
 {
-    "target": "https://medistore.se",
-    "timestamp": "2026-09-17 08:52:39",
+    "target": "http://demo.testfire.net",
+    "timestamp": "2026-09-17 09:02:28",
     "findings": [
-        {
-            "module": "Component CVE Audit: commercegurus-commercekit",
-            "severity": "Info",
-            "description": "Detected Version: 2.5.2 | Advisory Match: None Recorded | Status: Secure / Patched",
-            "details": {}
-        },
-        {
-            "module": "Component CVE Audit: yith-infinite-scrolling",
-            "severity": "Info",
-            "description": "Detected Version: 2.12.0 | Advisory Match: None Recorded | Status: Secure / Patched",
-            "details": {}
-        },
-        {
-            "module": "Component CVE Audit: woocommerce-product-bundles",
-            "severity": "Info",
-            "description": "Detected Version: 8.5.12 | Advisory Match: None Recorded | Status: Secure / Patched",
-            "details": {}
-        },
-        {
-            "module": "Component CVE Audit: woo-swish-e-commerce",
-            "severity": "Info",
-            "description": "Detected Version: 3.7.8 | Advisory Match: None Recorded | Status: Secure / Patched",
-            "details": {}
-        },
-        {
-            "module": "Component CVE Audit: woocommerce",
-            "severity": "Info",
-            "description": "Detected Version: 11.1.0 | Advisory Match: None Recorded | Status: Secure / Patched",
-            "details": {}
-        },
-        {
-            "module": "Component CVE Audit: woocommerce-product-addons",
-            "severity": "Info",
-            "description": "Detected Version: 8.4.2 | Advisory Match: None Recorded | Status: Secure / Patched",
-            "details": {}
-        },
-        {
-            "module": "Component CVE Audit: woocommerce-table-rate-shipping",
-            "severity": "Info",
-            "description": "Detected Version: 3.7.3 | Advisory Match: None Recorded | Status: Secure / Patched",
-            "details": {}
-        },
-        {
-            "module": "XML-RPC Protected / Disabled",
-            "severity": "Info",
-            "description": "xmlrpc.php returned HTTP status 403, indicating restriction.",
-            "details": {}
-        },
         {
             "module": "Missing Security Header: strict-transport-security",
             "severity": "Medium",
@@ -69,9 +21,9 @@
             "details": {}
         },
         {
-            "module": "Security Header Present: x-content-type-options",
-            "severity": "Info",
-            "description": "Header is configured. Value: nosniff...",
+            "module": "Missing Security Header: x-content-type-options",
+            "severity": "Low",
+            "description": "The target response is missing the x-content-type-options header, reducing client-side hardening.",
             "details": {}
         },
         {
@@ -85,19 +37,7 @@
             "severity": "Medium",
             "description": "The target response is missing the permissions-policy header, reducing client-side hardening.",
             "details": {}
-        },
-        {
-            "module": "WAF Rate-Limit Profile Completed",
-            "severity": "Info",
-            "description": "No strict rate-limiting detected up to concurrency 25.",
-            "details": {}
         }
     ],
-    "sections": {
-        "JavaScript Asset Analysis": {
-            "scripts_analyzed": 25,
-            "secrets_found": [],
-            "endpoints_discovered": []
-        }
-    }
+    "sections": {}
 }

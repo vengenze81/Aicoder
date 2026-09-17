@@ -9,6 +9,7 @@ from header_scanner import scan_security_headers
 from waf_profiler import profile_waf
 from auth_tester import run_credential_audit
 from js_extractor import extract_javascript_assets
+from subdomain_enum import enumerate_subdomains
 from reporter import ScanReporter
 
 async def main():
@@ -16,11 +17,12 @@ async def main():
     parser.add_argument("target", help="Target URL (e.g., https://medistore.se)")
     parser.add_argument("--vuln-scan", action="store_true", help="Run WordPress plugin vulnerability scan")
     parser.add_argument("--file-scan", action="store_true", help="Run sensitive file & backup scanner")
-    parser.add_argument("--xmlrpc-test", action="store_true", help="Test XML-RPC amplification/bruteforce vectors")
-    parser.add_argument("--header-scan", action="store_true", help="Audit security headers and clickjacking vectors")
-    parser.add_argument("--waf-profile", action="store_true", help="Profile WAF rate-limiting and concurrency limits")
-    parser.add_argument("--auth-audit", action="store_true", help="Run proxy-rotated credential audit")
-    parser.add_argument("--js-extract", action="store_true", help="Extract JS assets and hunt for hardcoded secrets/endpoints")
+    parser.add_argument("--xmlrpc-test", action="store_true", help="Test XML-RPC amplification vectors")
+    parser.add_argument("--header-scan", action="store_true", help="Audit security headers")
+    parser.add_argument("--waf-profile", action="store_true", help="Profile WAF rate-limiting")
+    parser.add_argument("--auth-audit", action="store_true", help="Run credential audit")
+    parser.add_argument("--js-extract", action="store_true", help="Extract JS secrets and endpoints")
+    parser.add_argument("--subdomain-enum", action="store_true", help="Enumerate active subdomains")
     parser.add_argument("--all", action="store_true", help="Run all security modules sequentially")
 
     args = parser.parse_args()
@@ -28,6 +30,10 @@ async def main():
     reporter = ScanReporter(target_url)
 
     print(f"[*] Initializing security scan framework against: {target_url}")
+
+    if args.all or args.subdomain_enum:
+        print("\n[*] Executing Subdomain Enumeration...")
+        await enumerate_subdomains(target_url, reporter=reporter)
 
     if args.all or args.vuln_scan:
         print("\n[*] Executing Plugin Vulnerability Scan...")
@@ -57,7 +63,6 @@ async def main():
         print("\n[*] Executing JavaScript Secret & Endpoint Extractor...")
         await extract_javascript_assets(target_url, reporter=reporter)
 
-    # Save summary report
     reporter.save_markdown()
     reporter.save_json()
     print(f"\n[+] Audit completed. Reports saved to scan_report.md and scan_report.json")
