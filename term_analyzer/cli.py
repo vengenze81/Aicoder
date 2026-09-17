@@ -17,6 +17,7 @@ from term_analyzer.vuln_scanner import run_vulnerability_scan
 from term_analyzer.headers_scanner import audit_headers_and_cors
 from term_analyzer.graphql_scanner import run_graphql_scan
 from term_analyzer.apk_scanner import audit_apk
+from term_analyzer.recon import run_recon
 
 console = Console()
 
@@ -144,7 +145,7 @@ async def run_vhost_async(args):
         return
         
     exclude_statuses = {int(s.strip()) for s in args.exclude_status.split(",")} if args.exclude_status else set()
-    exclude_lengths = {int(l.strip()) for l in args.exclude_length.split(",")} if args.exclude_length else set()
+    exclude_lengths = {int(l.strip()) for s in args.exclude_length.split(",")} if args.exclude_length else set()
     
     results = await run_vhost_scan(
         target_url=args.target,
@@ -379,6 +380,34 @@ def run_apk_scan_sync(args):
     if args.html_report:
         generate_html_report(report_data, args.html_report)
 
+async def run_recon_async(args):
+    domain = args.domain or args.target
+    if not domain:
+        console.print("[bold red][!] Please specify a domain using --domain <domain.com> or --target[/bold red]")
+        return
+        
+    # Clean domain if full URL was passed
+    if "://" in domain:
+        domain = domain.split("://")[1].split("/")[0]
+
+    results = await run_recon(
+        domain=domain,
+        wordlist_path=args.wordlist,
+        concurrency=args.concurrency,
+        proxy=args.proxy
+    )
+    
+    report_data = {
+        "mode": "recon",
+        "target": domain,
+        "results": results
+    }
+    
+    if args.json_report:
+        json_report(report_data, args.json_report)
+    if args.html_report:
+        generate_html_report(report_data, args.html_report)
+
 def handle_jwt_commands(args):
     if args.jwt_inspect:
         header, payload, err = decode_jwt(args.jwt_inspect)
@@ -413,9 +442,10 @@ def main():
     parser.add_argument("--headers-scan", action="store_true", help="Enable security headers and CORS misconfiguration auditor")
     parser.add_argument("--graphql-scan", action="store_true", help="Enable GraphQL endpoint and introspection auditor")
     parser.add_argument("--apk-scan", action="store_true", help="Enable Android APK static analysis and secret extraction")
+    parser.add_argument("--recon", action="store_true", help="Enable subdomain discovery, OSINT, and attack surface recon")
     parser.add_argument("--max-depth", type=int, default=2, help="Maximum crawl depth")
     parser.add_argument("--spec", type=str, default=None, help="Path to OpenAPI/Swagger JSON or YAML spec file")
-    parser.add_argument("--domain", type=str, default=None, help="Base domain for VHost fuzzing (e.g., example.com)")
+    parser.add_argument("--domain", type=str, default=None, help="Base domain for VHost fuzzing or Recon (e.g., example.com)")
     parser.add_argument("--intruder-mode", choices=["sniper", "pitchfork", "cluster"], default="sniper", help="Intruder attack mode")
     parser.add_argument("--payloads", type=str, default="payloads.txt", help="Path to payload file(s), comma-separated")
     parser.add_argument("--fuzz-url", type=str, help="URL template with §§ insertion points")
@@ -444,6 +474,8 @@ def main():
     
     if args.download_wordlist:
         download_wordlist(args.download_wordlist)
+    elif args.recon:
+        asyncio.run(run_recon_async(args))
     elif args.apk_scan:
         run_apk_scan_sync(args)
     elif args.graphql_scan:
