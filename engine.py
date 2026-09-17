@@ -7,6 +7,7 @@ from config import USER_AGENTS, WAF_SIGNATURES, PROXY_LIST
 from patterns import PATTERNS
 from headers import analyze_security_headers
 from crawler import extract_internal_links
+from js_extractor import extract_js_secrets_and_endpoints
 
 async def analyze_content(url, text, headers):
     findings = []
@@ -69,6 +70,18 @@ async def stealth_probe(client, base_url, endpoint, reporter=None, timeout=8.0, 
                     print(f"    └── {gap}")
                 
                 content_type = response.headers.get("content-type", "")
+                
+                # If JavaScript file, run deep JS endpoint/secret extraction
+                if "javascript" in content_type or url.endswith(".js"):
+                    js_endpoints, js_secrets = extract_js_secrets_and_endpoints(response.text)
+                    if js_endpoints:
+                        print(f"    └── [JS Analyzer] Discovered {len(js_endpoints)} internal API endpoints in script.")
+                        new_links.extend(js_endpoints)
+                    for sec_label, sec_val in js_secrets:
+                        print(f"    └── 🚨 [JS SECRET FOUND] {sec_label}: {sec_val}")
+                        regex_hits.append(f"JS Secret ({sec_label}): {sec_val}")
+
+                # If standard HTML, run crawler
                 if "text/html" in content_type:
                     new_links = extract_internal_links(base_url, response.text)
                 
