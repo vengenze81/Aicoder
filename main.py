@@ -7,6 +7,7 @@ from vuln_scanner import scan_wordpress_plugins
 from api_fuzzer import fuzz_api_endpoints
 from file_scanner import scan_sensitive_files
 from xmlrpc_tester import test_xmlrpc
+from header_scanner import scan_security_headers
 from reporter import ScanReporter
 from config import PROXY_LIST
 
@@ -43,6 +44,7 @@ if __name__ == "__main__":
     parser.add_argument("--api-fuzz", action="store_true", help="Run WordPress & WooCommerce REST API endpoint fuzzer")
     parser.add_argument("--file-scan", action="store_true", help="Run sensitive file and backup exposure scanner")
     parser.add_argument("--xmlrpc-test", action="store_true", help="Run WordPress XML-RPC endpoint and method availability probe")
+    parser.add_argument("--header-scan", action="store_true", help="Run HTTP security headers and transport security audit")
     
     args = parser.parse_args()
     
@@ -81,6 +83,15 @@ if __name__ == "__main__":
         
     if args.xmlrpc_test:
         asyncio.run(test_xmlrpc(args.target, timeout=args.timeout, reporter=reporter))
+        if reporter:
+            if args.output in ["json", "both"]:
+                reporter.save_json()
+            if args.output in ["md", "both"]:
+                reporter.save_markdown()
+        sys.exit(0)
+        
+    if args.header_scan:
+        asyncio.run(scan_security_headers(args.target, timeout=args.timeout, reporter=reporter))
         if reporter:
             if args.output in ["json", "both"]:
                 reporter.save_json()
