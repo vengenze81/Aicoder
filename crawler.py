@@ -22,7 +22,7 @@ def extract_internal_links(base_url, html_content):
                 '.png', '.jpg', '.jpeg', '.gif', '.css', '.js', 
                 '.ico', '.pdf', '.svg', '.woff', '.woff2', '.webp', '.zip',
                 '/page/', '/tag/', '/author/', '/comment-page-'
-            ]
+            )
             
             if not any(pat in path.lower() for pat in ignored_patterns):
                 discovered_paths.add(path)
