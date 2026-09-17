@@ -1,28 +1,38 @@
 # Security Reconnaissance Report
 
 - **Target:** `https://medistore.se`
-- **Timestamp:** `2026-09-17 12:16:27`
-- **Total Findings:** `1`
+- **Timestamp:** `2026-09-17 12:20:46`
+- **Total Findings:** `3`
 
 ## Summary of Findings
 | Module / Section | Severity / Type | Description / Details |
 | :--- | :--- | :--- |
-| Session Auditor | **LOW** | Insecure cookie configuration for '__cf_bm': Insecure or missing 'SameSite' attribute ('None') |
-| Cookie & Session Security Analysis | **INFO** | Analyzed data successfully logged. |
+| SRI Auditor | **MEDIUM** | External script loaded without SRI integrity hash: https://www.googletagmanager.com/gtag/js?id=G-ZC06GLL4HW&l=dataLayer |
+| SRI Auditor | **MEDIUM** | External script loaded without SRI integrity hash: https://www.gstatic.com/shopping/merchant/merchantwidget.js |
+| SRI Auditor | **MEDIUM** | External script loaded without SRI integrity hash: https://helloretailcdn.com/helloretail.js |
+| Subresource Integrity (SRI) Analysis | **INFO** | Analyzed data successfully logged. |
 
 ## Detailed Module Sections
 
-### Cookie & Session Security Analysis
+### Subresource Integrity (SRI) Analysis
 ```json
 {
-  "findings_count": 1,
+  "findings_count": 3,
   "findings": [
     {
-      "cookie_name": "__cf_bm",
-      "issues": [
-        "Insecure or missing 'SameSite' attribute ('None')"
-      ],
-      "severity": "LOW"
+      "tag": "script",
+      "url": "https://www.googletagmanager.com/gtag/js?id=G-ZC06GLL4HW&l=dataLayer",
+      "severity": "MEDIUM"
+    },
+    {
+      "tag": "script",
+      "url": "https://www.gstatic.com/shopping/merchant/merchantwidget.js",
+      "severity": "MEDIUM"
+    },
+    {
+      "tag": "script",
+      "url": "https://helloretailcdn.com/helloretail.js",
+      "severity": "MEDIUM"
     }
   ]
 }

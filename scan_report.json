@@ -1,30 +1,69 @@
 {
     "target": "https://medistore.se",
-    "timestamp": "2026-09-17 12:16:27",
+    "timestamp": "2026-09-17 12:20:46",
     "findings": [
         {
-            "module": "Session Auditor",
-            "severity": "LOW",
-            "description": "Insecure cookie configuration for '__cf_bm': Insecure or missing 'SameSite' attribute ('None')",
+            "module": "SRI Auditor",
+            "severity": "MEDIUM",
+            "description": "External script loaded without SRI integrity hash: https://www.googletagmanager.com/gtag/js?id=G-ZC06GLL4HW&l=dataLayer",
             "details": {
-                "cookie": "__cf_bm",
-                "raw": "__cf_bm=.8n6g4Uolpa4Q0EKsVGRpM5Gap_jspe0arn2e_hwl8E-1789640189.9005342-1.0.1.1-UdojM40rp_VJk6i4ERJsOw6QPND6a9BdTRA4X.lK6YrOZ_xE3f1N6pJmXuppo_c9A9l24qGL23XWtwrqZ2fdRsxkmkx7XthkR3Ao6H07WCwpQG3Xd1aCSY90kL1CTJSn; HttpOnly; SameSite=None; Secure; Path=/; Domain=medistore.se; Expires=Thu, 17 Sep 2026 10:46:30 GMT",
-                "issues": [
-                    "Insecure or missing 'SameSite' attribute ('None')"
-                ]
+                "tag": "script",
+                "url": "https://www.googletagmanager.com/gtag/js?id=G-ZC06GLL4HW&l=dataLayer",
+                "has_integrity": false,
+                "attrs": {
+                    "async": null,
+                    "src": "https://www.googletagmanager.com/gtag/js?id=G-ZC06GLL4HW&l=dataLayer"
+                }
+            }
+        },
+        {
+            "module": "SRI Auditor",
+            "severity": "MEDIUM",
+            "description": "External script loaded without SRI integrity hash: https://www.gstatic.com/shopping/merchant/merchantwidget.js",
+            "details": {
+                "tag": "script",
+                "url": "https://www.gstatic.com/shopping/merchant/merchantwidget.js",
+                "has_integrity": false,
+                "attrs": {
+                    "id": "merchantWidgetScript",
+                    "src": "https://www.gstatic.com/shopping/merchant/merchantwidget.js",
+                    "defer": null
+                }
+            }
+        },
+        {
+            "module": "SRI Auditor",
+            "severity": "MEDIUM",
+            "description": "External script loaded without SRI integrity hash: https://helloretailcdn.com/helloretail.js",
+            "details": {
+                "tag": "script",
+                "url": "https://helloretailcdn.com/helloretail.js",
+                "has_integrity": false,
+                "attrs": {
+                    "async": null,
+                    "src": "https://helloretailcdn.com/helloretail.js"
+                }
             }
         }
     ],
     "sections": {
-        "Cookie & Session Security Analysis": {
-            "findings_count": 1,
+        "Subresource Integrity (SRI) Analysis": {
+            "findings_count": 3,
             "findings": [
                 {
-                    "cookie_name": "__cf_bm",
-                    "issues": [
-                        "Insecure or missing 'SameSite' attribute ('None')"
-                    ],
-                    "severity": "LOW"
+                    "tag": "script",
+                    "url": "https://www.googletagmanager.com/gtag/js?id=G-ZC06GLL4HW&l=dataLayer",
+                    "severity": "MEDIUM"
+                },
+                {
+                    "tag": "script",
+                    "url": "https://www.gstatic.com/shopping/merchant/merchantwidget.js",
+                    "severity": "MEDIUM"
+                },
+                {
+                    "tag": "script",
+                    "url": "https://helloretailcdn.com/helloretail.js",
+                    "severity": "MEDIUM"
                 }
             ]
         }
