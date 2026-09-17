@@ -1,27 +1,29 @@
 # Security Reconnaissance Report
 
 - **Target:** `https://medistore.se`
-- **Timestamp:** `2026-09-17 09:26:05`
+- **Timestamp:** `2026-09-17 10:41:12`
 - **Total Findings:** `1`
 
 ## Summary of Findings
 | Module / Section | Severity / Type | Description / Details |
 | :--- | :--- | :--- |
-| API Endpoint Discovery | **INFO** | Exposed API path found: https://medistore.se/openapi.yaml (HTTP 403) |
-| API Endpoint Discovery | **INFO** | Analyzed data successfully logged. |
+| SSL/TLS Auditor | **INFO** | Secure TLS version active: TLSv1.3 |
+| SSL/TLS Certificate Analysis | **INFO** | Analyzed data successfully logged. |
 
 ## Detailed Module Sections
 
-### API Endpoint Discovery
+### SSL/TLS Certificate Analysis
 ```json
 {
-  "target": "https://medistore.se",
-  "total_discovered": 1,
-  "endpoints": [
-    {
-      "url": "https://medistore.se/openapi.yaml",
-      "status": 403
-    }
-  ]
+  "tls_version": "TLSv1.3",
+  "cipher": [
+    "TLS_AES_256_GCM_SHA384",
+    "TLSv1.3",
+    256
+  ],
+  "subject": {},
+  "issuer": {},
+  "not_before": null,
+  "not_after": null
 }
 ```

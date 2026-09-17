@@ -172,7 +172,7 @@
             <h1>🛡️ Security Reconnaissance Report</h1>
             <div class="metadata">
                 <span><strong>Target:</strong> https://medistore.se</span>
-                <span><strong>Generated:</strong> 2026-09-17 09:26:05</span>
+                <span><strong>Generated:</strong> 2026-09-17 10:41:12</span>
                 <span><strong>Total Findings:</strong> 1</span>
             </div>
         </header>
@@ -213,9 +213,9 @@
                 <tbody>
                     
                 <tr>
-                    <td><strong>API Endpoint Discovery</strong></td>
+                    <td><strong>SSL/TLS Auditor</strong></td>
                     <td><span class="badge badge-info">INFO</span></td>
-                    <td>Exposed API path found: https://medistore.se/openapi.yaml (HTTP 403)</td>
+                    <td>Secure TLS version active: TLSv1.3</td>
                 </tr>
                 
                 </tbody>
@@ -224,16 +224,18 @@
 
         <div class="card"><h2>Detailed Module Data & Payloads</h2>
             <div class="section-card">
-                <h3>API Endpoint Discovery</h3>
+                <h3>SSL/TLS Certificate Analysis</h3>
                 <pre><code>{
-  "target": "https://medistore.se",
-  "total_discovered": 1,
-  "endpoints": [
-    {
-      "url": "https://medistore.se/openapi.yaml",
-      "status": 403
-    }
-  ]
+  "tls_version": "TLSv1.3",
+  "cipher": [
+    "TLS_AES_256_GCM_SHA384",
+    "TLSv1.3",
+    256
+  ],
+  "subject": {},
+  "issuer": {},
+  "not_before": null,
+  "not_after": null
 }</code></pre>
             </div>
             </div>

@@ -5,7 +5,7 @@ from textual.app import App, ComposeResult
 from textual.widgets import Header, Footer, Button, Input, RichLog, Static
 from textual.containers import Container, Horizontal, Vertical
 
-# Import all core framework modules including API Discover
+# Import all core framework modules including SSL Scanner
 from vuln_scanner import scan_wordpress_plugins
 from file_scanner import scan_sensitive_files
 from xmlrpc_tester import test_xmlrpc
@@ -16,6 +16,7 @@ from js_extractor import extract_javascript_assets
 from subdomain_enum import enumerate_subdomains
 from port_scanner import scan_ports
 from api_discover import discover_api_endpoints
+from ssl_scanner import audit_ssl_certificate
 from reporter import ScanReporter
 
 class StreamToLog(io.TextIOBase):
@@ -77,16 +78,17 @@ class SecurityDashboard(App):
         with Horizontal(id="main-content"):
             with Vertical(id="sidebar"):
                 yield Static("[bold cyan]Audit Modules[/bold cyan]\n")
-                yield Button("1. API Discovery", id="btn-api", variant="primary")
-                yield Button("2. Port Scanner", id="btn-port", variant="primary")
-                yield Button("3. Subdomain Enum", id="btn-sub", variant="primary")
-                yield Button("4. Plugin Vuln Scan", id="btn-vuln", variant="primary")
-                yield Button("5. Sensitive Files", id="btn-file", variant="primary")
-                yield Button("6. XML-RPC Probe", id="btn-xmlrpc", variant="primary")
-                yield Button("7. Header Audit", id="btn-header", variant="primary")
-                yield Button("8. WAF Profiler", id="btn-waf", variant="primary")
-                yield Button("9. Credential Audit", id="btn-auth", variant="warning")
-                yield Button("10. JS Extractor", id="btn-js", variant="primary")
+                yield Button("1. SSL/TLS Audit", id="btn-ssl", variant="primary")
+                yield Button("2. API Discovery", id="btn-api", variant="primary")
+                yield Button("3. Port Scanner", id="btn-port", variant="primary")
+                yield Button("4. Subdomain Enum", id="btn-sub", variant="primary")
+                yield Button("5. Plugin Vuln Scan", id="btn-vuln", variant="primary")
+                yield Button("6. Sensitive Files", id="btn-file", variant="primary")
+                yield Button("7. XML-RPC Probe", id="btn-xmlrpc", variant="primary")
+                yield Button("8. Header Audit", id="btn-header", variant="primary")
+                yield Button("9. WAF Profiler", id="btn-waf", variant="primary")
+                yield Button("10. Credential Audit", id="btn-auth", variant="warning")
+                yield Button("11. JS Extractor", id="btn-js", variant="primary")
                 yield Static("\n")
                 yield Button("🛑 Abort Current Scan", id="btn-cancel", variant="error")
             yield RichLog(id="log-view", highlight=True, markup=True)
@@ -121,7 +123,10 @@ class SecurityDashboard(App):
         log.write(f"[bold cyan]>>> Initializing background task against target: {target_url}[/bold cyan]")
 
         try:
-            if button_id == "btn-api":
+            if button_id == "btn-ssl":
+                log.write("[yellow]Executing SSL/TLS Certificate & Transport Auditor...[/yellow]")
+                await audit_ssl_certificate(target_url, reporter=reporter)
+            elif button_id == "btn-api":
                 log.write("[yellow]Executing API Endpoint & Documentation Discovery...[/yellow]")
                 await discover_api_endpoints(target_url, reporter=reporter)
             elif button_id == "btn-port":

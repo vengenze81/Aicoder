@@ -1,28 +1,37 @@
 {
     "target": "https://medistore.se",
-    "timestamp": "2026-09-17 09:26:05",
+    "timestamp": "2026-09-17 10:41:12",
     "findings": [
         {
-            "module": "API Endpoint Discovery",
+            "module": "SSL/TLS Auditor",
             "severity": "INFO",
-            "description": "Exposed API path found: https://medistore.se/openapi.yaml (HTTP 403)",
+            "description": "Secure TLS version active: TLSv1.3",
             "details": {
-                "url": "https://medistore.se/openapi.yaml",
-                "status_code": 403,
-                "content_type": "text/html; charset=UTF-8"
+                "tls_version": "TLSv1.3",
+                "cipher": [
+                    "TLS_AES_256_GCM_SHA384",
+                    "TLSv1.3",
+                    256
+                ],
+                "subject": {},
+                "issuer": {},
+                "not_before": null,
+                "not_after": null
             }
         }
     ],
     "sections": {
-        "API Endpoint Discovery": {
-            "target": "https://medistore.se",
-            "total_discovered": 1,
-            "endpoints": [
-                {
-                    "url": "https://medistore.se/openapi.yaml",
-                    "status": 403
-                }
-            ]
+        "SSL/TLS Certificate Analysis": {
+            "tls_version": "TLSv1.3",
+            "cipher": [
+                "TLS_AES_256_GCM_SHA384",
+                "TLSv1.3",
+                256
+            ],
+            "subject": {},
+            "issuer": {},
+            "not_before": null,
+            "not_after": null
         }
     }
 }
