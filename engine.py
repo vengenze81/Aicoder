@@ -16,7 +16,7 @@ async def analyze_content(url, text, headers):
             findings.append((label, matches))
     return findings
 
-async def stealth_probe(client, base_url, endpoint, proxy=None, max_retries=3):
+async def stealth_probe(client, base_url, endpoint, timeout=8.0, proxy=None, custom_headers=None, max_retries=3):
     url = base_url.rstrip("/") + endpoint
     base_delay = 1.5
 
@@ -28,8 +28,12 @@ async def stealth_probe(client, base_url, endpoint, proxy=None, max_retries=3):
             "Connection": "keep-alive"
         }
         
+        # Merge custom user-supplied headers if provided
+        if custom_headers:
+            headers.update(custom_headers)
+        
         try:
-            kwargs = {"headers": headers, "timeout": 8.0, "follow_redirects": True}
+            kwargs = {"headers": headers, "timeout": timeout, "follow_redirects": True}
             if proxy:
                 kwargs["proxy"] = proxy
 
@@ -68,18 +72,18 @@ async def stealth_probe(client, base_url, endpoint, proxy=None, max_retries=3):
                 print(f"[-] [Error] Failed to reach {url} via {proxy or 'Direct'}: {e}")
             await asyncio.sleep(2)
 
-async def run_stealth_scanner(target_url, endpoints):
-    limits = httpx.Limits(max_keepalive_connections=5, max_connections=10)
+async def run_stealth_scanner(target_url, endpoints, concurrency=5, timeout=8.0, custom_headers=None):
+    limits = httpx.Limits(max_keepalive_connections=concurrency, max_connections=concurrency * 2)
     proxy_cycle = itertools.cycle(PROXY_LIST) if PROXY_LIST else None
 
     async with httpx.AsyncClient(limits=limits) as client:
-        semaphore = asyncio.Semaphore(3)
+        semaphore = asyncio.Semaphore(concurrency)
         
         async def bounded_probe(ep):
             async with semaphore:
                 proxy = next(proxy_cycle) if proxy_cycle else None
-                await stealth_probe(client, target_url, ep, proxy=proxy)
-                await asyncio.sleep(random.uniform(0.3, 0.9))
+                await stealth_probe(client, target_url, ep, timeout=timeout, proxy=proxy, custom_headers=custom_headers)
+                await asyncio.sleep(random.uniform(0.2, 0.6))
 
         tasks = [bounded_probe(ep) for ep in endpoints]
         await asyncio.gather(*tasks)
