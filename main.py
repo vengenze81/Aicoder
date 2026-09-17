@@ -2,6 +2,7 @@ import sys
 import asyncio
 import argparse
 from engine import run_stealth_scanner
+from auth_tester import run_credential_audit
 from reporter import ScanReporter
 from config import PROXY_LIST
 
@@ -21,7 +22,7 @@ def load_wordlist(filepath):
     return endpoints
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Modular Asynchronous Stealth Security Reconnaissance Engine")
+    parser = argparse.ArgumentParser(description="Modular Asynchronous Stealth Security Reconnaissance & Audit Engine")
     parser.add_argument("target", help="Target base URL (e.g., https://example.com)")
     parser.add_argument("-w", "--wordlist", default="wordlist.txt", help="Path to endpoint wordlist file (default: wordlist.txt)")
     parser.add_argument("-c", "--concurrency", type=int, default=5, help="Maximum concurrent requests (default: 5)")
@@ -30,7 +31,16 @@ if __name__ == "__main__":
     parser.add_argument("-o", "--output", choices=["json", "md", "both"], help="Export scan report format (json, md, or both)")
     parser.add_argument("-r", "--recursive", action="store_true", help="Enable recursive HTML link crawler/spider mode")
     
+    # New Credential Auditor flags
+    parser.add_argument("--auth-test", action="store_true", help="Run credential validation test against discovered usernames")
+    parser.add_argument("--user-file", default="discovered_usernames.txt", help="Path to username file for auth testing")
+    parser.add_argument("--password", default="password123", help="Password to test against user handles")
+    
     args = parser.parse_args()
+    
+    if args.auth_test:
+        asyncio.run(run_credential_audit(args.target, args.user_file, args.password, timeout=args.timeout))
+        sys.exit(0)
     
     custom_headers = {}
     if args.header:
