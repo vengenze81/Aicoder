@@ -10,6 +10,7 @@ from waf_profiler import profile_waf
 from auth_tester import run_credential_audit
 from js_extractor import extract_javascript_assets
 from subdomain_enum import enumerate_subdomains
+from port_scanner import scan_ports
 from reporter import ScanReporter
 
 async def main():
@@ -23,6 +24,7 @@ async def main():
     parser.add_argument("--auth-audit", action="store_true", help="Run credential audit")
     parser.add_argument("--js-extract", action="store_true", help="Extract JS secrets and endpoints")
     parser.add_argument("--subdomain-enum", action="store_true", help="Enumerate active subdomains")
+    parser.add_argument("--port-scan", action="store_true", help="Run async port and service banner scan")
     parser.add_argument("--all", action="store_true", help="Run all security modules sequentially")
 
     args = parser.parse_args()
@@ -30,6 +32,10 @@ async def main():
     reporter = ScanReporter(target_url)
 
     print(f"[*] Initializing security scan framework against: {target_url}")
+
+    if args.all or args.port_scan:
+        print("\n[*] Executing Async Port & Banner Scan...")
+        await scan_ports(target_url, reporter=reporter)
 
     if args.all or args.subdomain_enum:
         print("\n[*] Executing Subdomain Enumeration...")

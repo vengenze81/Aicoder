@@ -1,43 +1,77 @@
 {
-    "target": "http://demo.testfire.net",
-    "timestamp": "2026-09-17 09:02:28",
+    "target": "https://medistore.se",
+    "timestamp": "2026-09-17 09:20:47",
     "findings": [
         {
-            "module": "Missing Security Header: strict-transport-security",
-            "severity": "Medium",
-            "description": "The target response is missing the strict-transport-security header, reducing client-side hardening.",
-            "details": {}
+            "module": "Port Scanner",
+            "severity": "INFO",
+            "description": "Open port discovered: 80 (HTTP)",
+            "details": {
+                "port": 80,
+                "service": "HTTP",
+                "banner": ""
+            }
         },
         {
-            "module": "Missing Security Header: content-security-policy",
-            "severity": "Medium",
-            "description": "The target response is missing the content-security-policy header, reducing client-side hardening.",
-            "details": {}
+            "module": "Port Scanner",
+            "severity": "INFO",
+            "description": "Open port discovered: 443 (HTTPS)",
+            "details": {
+                "port": 443,
+                "service": "HTTPS",
+                "banner": ""
+            }
         },
         {
-            "module": "Missing Security Header: x-frame-options",
-            "severity": "Low",
-            "description": "The target response is missing the x-frame-options header, reducing client-side hardening.",
-            "details": {}
+            "module": "Port Scanner",
+            "severity": "INFO",
+            "description": "Open port discovered: 8080 (HTTP-Proxy)",
+            "details": {
+                "port": 8080,
+                "service": "HTTP-Proxy",
+                "banner": ""
+            }
         },
         {
-            "module": "Missing Security Header: x-content-type-options",
-            "severity": "Low",
-            "description": "The target response is missing the x-content-type-options header, reducing client-side hardening.",
-            "details": {}
-        },
-        {
-            "module": "Missing Security Header: referrer-policy",
-            "severity": "Medium",
-            "description": "The target response is missing the referrer-policy header, reducing client-side hardening.",
-            "details": {}
-        },
-        {
-            "module": "Missing Security Header: permissions-policy",
-            "severity": "Medium",
-            "description": "The target response is missing the permissions-policy header, reducing client-side hardening.",
-            "details": {}
+            "module": "Port Scanner",
+            "severity": "INFO",
+            "description": "Open port discovered: 8443 (HTTPS-Alt)",
+            "details": {
+                "port": 8443,
+                "service": "HTTPS-Alt",
+                "banner": ""
+            }
         }
     ],
-    "sections": {}
+    "sections": {
+        "Port Scanner Analysis": {
+            "target_host": "medistore.se",
+            "open_ports": [
+                {
+                    "port": 80,
+                    "service": "HTTP",
+                    "status": "OPEN",
+                    "banner": ""
+                },
+                {
+                    "port": 443,
+                    "service": "HTTPS",
+                    "status": "OPEN",
+                    "banner": ""
+                },
+                {
+                    "port": 8080,
+                    "service": "HTTP-Proxy",
+                    "status": "OPEN",
+                    "banner": ""
+                },
+                {
+                    "port": 8443,
+                    "service": "HTTPS-Alt",
+                    "status": "OPEN",
+                    "banner": ""
+                }
+            ]
+        }
+    }
 }
