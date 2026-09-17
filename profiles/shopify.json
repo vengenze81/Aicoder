@@ -1,0 +1,12 @@
+{
+  "platform": "shopify",
+  "admin_indicator": "window.Shopify && window.Shopify.shop",
+  "admin_role": "Shopify Staff",
+  "customer_role": "Shopper",
+  "api_dumps": [
+    {"action": "shopify_cart_dump", "path": "/cart.js"}
+  ],
+  "backdoor": {
+    "enabled": false
+  }
+}

