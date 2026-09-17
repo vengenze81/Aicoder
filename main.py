@@ -14,7 +14,8 @@ async def main():
     # Dynamically register arguments based on discovered plugins
     for p_id, p_info in plugins.items():
         meta = p_info["meta"]
-        parser.add_argument(meta["flag"], action="store_true", help=meta["description"])
+        if "flag" in meta:
+            parser.add_argument(meta["flag"], action="store_true", help=meta.get("description", ""))
     
     parser.add_argument("--all", action="store_true", help="Run all discovered plugins sequentially")
 

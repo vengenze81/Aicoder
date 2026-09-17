@@ -20,6 +20,8 @@ class PluginManager:
                             "meta": module.PLUGIN_META,
                             "run": module.run
                         }
+                    else:
+                        print(f"[-] Plugin {module_name} missing PLUGIN_META or run()")
                 except Exception as e:
                     print(f"[-] Failed to load plugin {module_name}: {e}")
         return self.plugins

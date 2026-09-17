@@ -1,11 +1,30 @@
 {
     "target": "https://medistore.se",
-    "timestamp": "2026-09-17 10:56:32",
-    "findings": [],
+    "timestamp": "2026-09-17 11:03:31",
+    "findings": [
+        {
+            "module": "Cloud Storage Enum",
+            "severity": "LOW",
+            "description": "[Google Cloud] Discovered cloud storage bucket: https://storage.googleapis.com/medistore [HTTP 403]",
+            "details": {
+                "provider": "Google Cloud",
+                "url": "https://storage.googleapis.com/medistore",
+                "status_code": 403
+            }
+        }
+    ],
     "sections": {
-        "WAF Profile Analysis": {
-            "target": "https://medistore.se",
-            "waf_triggered": false
+        "Cloud Storage Enumeration Analysis": {
+            "permutations_checked": 27,
+            "findings_count": 1,
+            "findings": [
+                {
+                    "provider": "Google Cloud",
+                    "url": "https://storage.googleapis.com/medistore",
+                    "status": 403,
+                    "severity": "LOW"
+                }
+            ]
         }
     }
 }

@@ -172,8 +172,8 @@
             <h1>🛡️ Security Reconnaissance Report</h1>
             <div class="metadata">
                 <span><strong>Target:</strong> https://medistore.se</span>
-                <span><strong>Generated:</strong> 2026-09-17 10:56:32</span>
-                <span><strong>Total Findings:</strong> 0</span>
+                <span><strong>Generated:</strong> 2026-09-17 11:03:31</span>
+                <span><strong>Total Findings:</strong> 1</span>
             </div>
         </header>
 
@@ -192,7 +192,7 @@
             </div>
             <div class="stat-card low">
                 <div>Low / Warning</div>
-                <div class="number">0</div>
+                <div class="number">1</div>
             </div>
             <div class="stat-card info">
                 <div>Info / Normal</div>
@@ -211,17 +211,31 @@
                     </tr>
                 </thead>
                 <tbody>
-                    <tr><td colspan='3' style='text-align: center; color: #64748b; padding: 25px;'>No vulnerabilities or items logged.</td></tr>
+                    
+                <tr>
+                    <td><strong>Cloud Storage Enum</strong></td>
+                    <td><span class="badge badge-low">LOW</span></td>
+                    <td>[Google Cloud] Discovered cloud storage bucket: https://storage.googleapis.com/medistore [HTTP 403]</td>
+                </tr>
+                
                 </tbody>
             </table>
         </div>
 
         <div class="card"><h2>Detailed Module Data & Payloads</h2>
             <div class="section-card">
-                <h3>WAF Profile Analysis</h3>
+                <h3>Cloud Storage Enumeration Analysis</h3>
                 <pre><code>{
-  "target": "https://medistore.se",
-  "waf_triggered": false
+  "permutations_checked": 27,
+  "findings_count": 1,
+  "findings": [
+    {
+      "provider": "Google Cloud",
+      "url": "https://storage.googleapis.com/medistore",
+      "status": 403,
+      "severity": "LOW"
+    }
+  ]
 }</code></pre>
             </div>
             </div>
